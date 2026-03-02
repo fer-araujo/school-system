@@ -8,6 +8,7 @@ import {
   where,
   getDocs,
   Timestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import type {
   AttendanceStatus,
@@ -119,5 +120,64 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
         workerName: usersMap.get(data.userId as string) || "Desconocido",
       };
     });
+  }
+
+  listenToAttendancesByDate(
+    date: string,
+    callback: (data: AttendanceWithWorker[]) => void,
+  ): () => void {
+    const q = query(collection(db, "attendance"), where("date", "==", date));
+
+    // onSnapshot es la magia de Firebase para el tiempo real
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      if (snapshot.empty) {
+        callback([]);
+        return;
+      }
+
+      // Traemos los nombres de los usuarios (Para un sistema gigante esto se cachea, pero aquí funciona perfecto)
+      const usersSnapshot = await getDocs(collection(db, "users"));
+      const usersMap = new Map<string, string>();
+      usersSnapshot.forEach((userDoc) => {
+        usersMap.set(
+          userDoc.id,
+          userDoc.data().fullName || "Usuario Desconocido",
+        );
+      });
+
+      const records = snapshot.docs.map((doc) => {
+        const data = doc.data();
+        const rawPeriods = (data.periods as FirestoreWorkPeriod[]) || [];
+
+        const mappedPeriods: WorkPeriod[] = rawPeriods.map((p) => ({
+          checkIn:
+            p.checkIn instanceof Timestamp
+              ? p.checkIn.toDate()
+              : (p.checkIn as Date),
+          checkOut:
+            p.checkOut instanceof Timestamp
+              ? p.checkOut.toDate()
+              : p.checkOut
+                ? (p.checkOut as Date)
+                : undefined,
+          isLate: p.isLate || false,
+        }));
+
+        return {
+          id: doc.id,
+          userId: data.userId as string,
+          date: data.date as string,
+          periods: mappedPeriods,
+          status: data.status as AttendanceStatus,
+          workerName: usersMap.get(data.userId as string) || "Desconocido",
+        };
+      });
+
+      // Le avisamos a React que hay datos nuevos!
+      callback(records);
+    });
+
+    // Retornamos la función para "apagar" el micrófono cuando el admin cambie de pestaña
+    return unsubscribe;
   }
 }

@@ -1,31 +1,22 @@
 import type { User } from "../models/User";
 
-// Definimos qué datos viajarán ocultos dentro del cuadrito del QR
 export interface QRPayload {
-  uid: string;
-  date: string; // Formato YYYY-MM-DD
+  uid: string; // Mantenemos el UID para la velocidad de Firebase
+  emp?: string; // Opcional, por si lo quieres mostrar después
+  date: string;
   type: 'ENTRY' | 'EXIT';
+  t: number; // El timestamp anti-trampas
 }
 
 export class QRPayloadBuilder {
-  /**
-   * Genera el texto que irá dentro del QR basado en el día actual.
-   * Al incluir la fecha, garantizamos que el QR cambie a la medianoche.
-   */
   static buildDailyPayload(user: User, type: 'ENTRY' | 'EXIT'): string {
-    // Obtenemos la fecha actual en formato local (México)
-    const today = new Date();
-    // Ajustamos al formato YYYY-MM-DD
-    const dateString = today.toLocaleDateString('en-CA'); // 'en-CA' siempre da YYYY-MM-DD
-
     const payload: QRPayload = {
       uid: user.id,
-      date: dateString,
-      type: type
+      emp: user.employeeNumber,
+      date: new Date().toLocaleDateString('en-CA'),
+      type,
+      t: Date.now() // Hora exacta en milisegundos
     };
-
-    // Convertimos el objeto a un string (JSON) para meterlo en el QR
-    // En el futuro, aquí podríamos agregar una firma criptográfica para evitar falsificaciones
     return JSON.stringify(payload);
   }
 }

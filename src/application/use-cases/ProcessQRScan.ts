@@ -25,40 +25,47 @@ export class ProcessQRScan {
   async execute(rawQrString: string): Promise<string> {
     try {
       const payload = JSON.parse(rawQrString) as QRPayload;
-      if (!payload.uid || !payload.date || !payload.type)
-        throw new Error("QR inválido.");
+      
+      // 1. Validar que vengan todos los datos, incluyendo el timestamp (t)
+      if (!payload.uid || !payload.date || !payload.type || !payload.t) {
+        throw new Error("QR inválido o formato incorrecto.");
+      }
 
-      const today = new Date().toLocaleDateString("en-CA");
+      const now = new Date();
 
-      // 1. Validar Feriados
+      // --- 2. ESCUDO ANTI-TRAMPAS (Capturas de pantalla) ---
+      // Calculamos cuántos segundos han pasado desde que el maestro generó el QR
+      const qrAgeInSeconds = (now.getTime() - payload.t) / 1000;
+      if (qrAgeInSeconds > 60) {
+        throw new Error("QR Expirado. Por seguridad, el código dura 60 segundos. Genera uno nuevo.");
+      }
+
+      const today = now.toLocaleDateString("en-CA");
+
+      // 3. Validar QR del día correcto
+      if (payload.date !== today) throw new Error("QR Caducado (Fecha de otro día).");
+
+      // 4. Validar Feriados
       const holiday = await this.calendarRepo.getHolidayByDate(today);
       if (holiday) throw new Error(`Bloqueado: Hoy es ${holiday.reason}.`);
 
-      // 2. Validar Incapacidades
-      const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(
-        payload.uid,
-        today,
-      );
-      if (userAbsence)
-        throw new Error(
-          `Acceso denegado: Estás de ${userAbsence.type === "VACATION" ? "Vacaciones" : "Incapacidad"}.`,
-        );
+      // 5. Validar Incapacidades
+      const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(payload.uid, today);
+      if (userAbsence) {
+        throw new Error(`Acceso denegado: Estás de ${userAbsence.type === "VACATION" ? "Vacaciones" : "Incapacidad"}.`);
+      }
 
-      // 3. Validar QR Caducado
-      if (payload.date !== today) throw new Error("QR Caducado.");
-
-      // --- 4. NUEVA LÓGICA: CÁLCULO DE RETARDOS ---
+      // --- 6. LÓGICA DE TURNOS Y RETARDOS ---
       let isLate = false;
-      const now = new Date();
 
       if (payload.type === "ENTRY") {
-        const assignment = await this.shiftRepo.getActiveAssignmentForUser(
-          payload.uid,
-          today,
-        );
+        // CORRECCIÓN: Buscamos por uid, que es como se guardó la asignación en ManageShifts
+        const assignment = await this.shiftRepo.getActiveAssignmentForUser(payload.uid, today);
+        
         if (assignment) {
           const shift = await this.shiftRepo.getShiftById(assignment.shiftId);
           if (shift && shift.blocks.length > 0) {
+            
             // A) Encontrar el bloque horario más cercano a la hora actual
             let closestBlock = shift.blocks[0];
             let minDiff = Infinity;
@@ -88,9 +95,8 @@ export class ProcessQRScan {
           }
         }
       }
-      // ---------------------------------------------
 
-      // 5. Guardar Asistencia mandando el estado del retardo
+      // 7. Guardar Asistencia
       await this.attendanceRepo.recordScan(
         payload.uid,
         payload.date,
@@ -101,9 +107,9 @@ export class ProcessQRScan {
 
       const statusMsg = payload.type === "ENTRY" ? "Entrada" : "Salida";
       return `Éxito: ${statusMsg} registrada. ${isLate ? "(Con Retardo)" : ""}`;
+      
     } catch (error: unknown) {
-      if (error instanceof SyntaxError)
-        throw new Error("Código ajeno al sistema.");
+      if (error instanceof SyntaxError) throw new Error("Código ajeno al sistema.");
       if (error instanceof Error) throw error;
       throw new Error("Error desconocido al procesar.");
     }

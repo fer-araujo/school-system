@@ -5,6 +5,7 @@ export interface User {
   email: string;
   fullName: string;
   role: UserRole;
+  employeeNumber: string;
   isActive: boolean;
 }
 

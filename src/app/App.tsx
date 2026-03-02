@@ -1,67 +1,131 @@
-import { Routes, Route, Link, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import {
   LayoutDashboard,
   QrCode,
-  Calendar,
+  CalendarDays,
   Users,
   LogOut,
   Loader2,
+  Clock,
+  UserX,
+  ShieldCheck,
 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
+
+// --- COMPONENTES UI ---
+// Asumiendo que creaste la carpeta ui como mencionaste
+import NavItem from "./components/ui/NavItem";
+
+// --- PÁGINAS GENERALES ---
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Scanner from "./pages/Scanner";
-import AdminDashboard from "./pages/AdminDashboard";
+
+// --- PÁGINAS ADMIN (Las nuevas) ---
+import AdminOverview from "./pages/AdminOverview";
+
+// --- COMPONENTES ADMIN (Los antiguos Tabs que usaremos como páginas temporalmente) ---
+import EmployeeTab from "./components/admin/EmployeeTab";
+import ShiftTab from "./components/admin/ShiftTab";
+import CalendarTab from "./components/admin/CalendarTab";
+import AbsenceTab from "./components/admin/AbsenceTab";
 
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      <aside className="w-64 bg-school-secondary text-white flex flex-col">
-        <div className="p-6 border-b border-slate-700">
-          <h2 className="text-xl font-bold">School System</h2>
-          <p className="text-sm text-slate-400 mt-1">{user?.fullName}</p>
-          <span className="text-xs font-semibold bg-school-primary px-2 py-0.5 rounded mt-2 inline-block">
-            {user?.role}
-          </span>
+    <div className="flex min-h-screen bg-[#F8FAFC] font-sans selection:bg-blue-500/30">
+      {/* SIDEBAR CINEMÁTICO */}
+      <aside className="w-72 bg-slate-950 border-r border-slate-800 flex flex-col relative overflow-hidden shrink-0">
+        {/* Glow effect sutil de fondo */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-blue-600/5 blur-[100px] pointer-events-none"></div>
+
+        <div className="p-6 border-b border-slate-800/60 z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
+              <ShieldCheck className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-white tracking-tight">
+                School<span className="text-blue-500">System</span>
+              </h2>
+            </div>
+          </div>
+
+          <div className="bg-slate-900/50 p-3 rounded-xl border border-slate-800 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-300 font-bold text-sm ring-1 ring-slate-700 uppercase">
+              {user?.fullName.charAt(0) || "U"}
+            </div>
+            <div className="overflow-hidden">
+              <p className="text-sm text-slate-200 font-medium truncate">
+                {user?.fullName}
+              </p>
+              <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider bg-blue-500/10 px-1.5 py-0.5 rounded">
+                {user?.role}
+              </span>
+            </div>
+          </div>
         </div>
-        <nav className="flex-1 p-4 space-y-2">
-          <Link
-            to="/"
-            className="flex items-center gap-3 p-2 rounded hover:bg-slate-800"
-          >
-            <LayoutDashboard size={20} /> Dashboard
-          </Link>
-          <Link
-            to="/scan"
-            className="flex items-center gap-3 p-2 rounded hover:bg-slate-800"
-          >
-            <QrCode size={20} /> Escanear QR
-          </Link>
-          <Link
-            to="/attendance"
-            className="flex items-center gap-3 p-2 rounded hover:bg-slate-800"
-          >
-            <Calendar size={20} /> Asistencias
-          </Link>
+
+        <nav className="flex-1 p-4 space-y-1.5 overflow-y-auto z-10">
+          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-2">
+            Personal
+          </div>
+
+          {/* Ocultamos el Gafete si es ADMIN */}
+          {user?.role !== "ADMIN" && (
+            <NavItem to="/" icon={LayoutDashboard} label="Mi Gafete" />
+          )}
+
+          <NavItem to="/scan" icon={QrCode} label="Escanear QR" />
+
           {user?.role === "ADMIN" && (
-            <Link
-              to="/admin/attendance"
-              className="flex items-center gap-3 p-2 rounded hover:bg-slate-800"
-            >
-              <Users size={20} /> Personal
-            </Link>
+            <>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-8">
+                Administración
+              </div>
+              <NavItem
+                to="/admin"
+                icon={LayoutDashboard}
+                label="Resumen Global"
+              />
+              <NavItem
+                to="/admin/employees"
+                icon={Users}
+                label="Gestión de Personal"
+              />
+              <NavItem
+                to="/admin/shifts"
+                icon={Clock}
+                label="Turnos y Horarios"
+              />
+              <NavItem
+                to="/admin/calendar"
+                icon={CalendarDays}
+                label="Calendario Escolar"
+              />
+              <NavItem to="/admin/absences" icon={UserX} label="Permisos" />
+            </>
           )}
         </nav>
-        <button
-          onClick={logout}
-          className="p-4 flex items-center gap-3 hover:bg-red-900 mt-auto transition-colors"
-        >
-          <LogOut size={20} /> Cerrar Sesión
-        </button>
+
+        <div className="p-4 z-10 border-t border-slate-800/60">
+          <button
+            onClick={logout}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 transition-colors group font-medium"
+          >
+            <LogOut className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />{" "}
+            Cerrar Sesión
+          </button>
+        </div>
       </aside>
-      <main className="flex-1 p-8">{children}</main>
+
+      {/* CONTENIDO PRINCIPAL */}
+      <main className="flex-1 overflow-x-hidden relative flex flex-col min-h-screen">
+        {/* Glow effect sutil superior */}
+        <div className="absolute top-0 inset-x-0 h-64 bg-linear-to-b from-slate-200/50 to-transparent pointer-events-none z-0"></div>
+        <div className="relative z-10 flex-1 p-4 md:p-8">{children}</div>
+      </main>
     </div>
   );
 };
@@ -69,16 +133,14 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
 export default function App() {
   const { user, loading } = useAuth();
 
-  // Pantalla de carga mientras Firebase revisa si hay sesión activa
   if (loading) {
     return (
-      <div className="min-h-screen flex justify-center items-center bg-slate-50">
-        <Loader2 className="w-10 h-10 animate-spin text-school-primary" />
+      <div className="min-h-screen flex justify-center items-center bg-slate-900">
+        <Loader2 className="w-10 h-10 animate-spin text-blue-500" />
       </div>
     );
   }
 
-  // Si NO hay usuario, solo mostramos el Login
   if (!user) {
     return (
       <Routes>
@@ -87,16 +149,33 @@ export default function App() {
     );
   }
 
-  // Si HAY usuario, mostramos el sistema protegido
   return (
     <MainLayout>
       <Routes>
-        <Route path="/admin/attendance" element={<AdminDashboard />} />
-        <Route path="/" element={<Dashboard />} />
+        {/* Rutas Compartidas / Trabajador */}
         <Route
-          path="/scan"
-          element={<Scanner />}
-        />
+          path="/"
+          element={
+            user.role === "ADMIN" ? (
+              <Navigate to="/admin" replace />
+            ) : (
+              <Dashboard />
+            )
+          }
+        />{" "}
+        <Route path="/scan" element={<Scanner />} />
+        {/* Rutas Exclusivas ADMIN */}
+        {user.role === "ADMIN" && (
+          <>
+            <Route path="/admin" element={<AdminOverview />} />
+            {/* Temporalmente inyectamos los Tabs viejos en las rutas nuevas */}
+            <Route path="/admin/employees" element={<EmployeeTab />} />
+            <Route path="/admin/shifts" element={<ShiftTab />} />
+            <Route path="/admin/calendar" element={<CalendarTab />} />
+            <Route path="/admin/absences" element={<AbsenceTab />} />
+          </>
+        )}
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </MainLayout>
