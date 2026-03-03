@@ -51,17 +51,16 @@ export class ManageShifts {
     }
 
     if (validUntil && validFrom > validUntil) {
-      throw new Error(
-        "La fecha de inicio no puede ser posterior a la fecha de fin.",
-      );
+      throw new Error("La fecha de inicio no puede ser posterior a la fecha de fin.");
     }
 
+    // Usamos el spread operator condicional para evitar el "undefined"
     const assignment: ShiftAssignment = {
       id: `assign_${userId}_${Date.now()}`,
       userId,
       shiftId,
       validFrom,
-      validUntil,
+      ...(validUntil !== undefined && { validUntil }), // ¡El truco de magia!
     };
 
     await this.shiftRepo.saveAssignment(assignment);

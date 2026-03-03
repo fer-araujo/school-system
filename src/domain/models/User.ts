@@ -6,6 +6,11 @@ export interface User {
   fullName: string;
   role: UserRole;
   employeeNumber: string;
+  phone?: string;
+  department?: string;
+  position?: string;
+  shiftId?: string;
+  shiftName?: string;
   isActive: boolean;
 }
 

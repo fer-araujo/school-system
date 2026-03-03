@@ -23,9 +23,9 @@ import Scanner from "./pages/Scanner";
 
 // --- PÁGINAS ADMIN (Las nuevas) ---
 import AdminOverview from "./pages/AdminOverview";
+import EmployeesPage from "./pages/EmployeesPage";
 
 // --- COMPONENTES ADMIN (Los antiguos Tabs que usaremos como páginas temporalmente) ---
-import EmployeeTab from "./components/admin/EmployeeTab";
 import ShiftTab from "./components/admin/ShiftTab";
 import CalendarTab from "./components/admin/CalendarTab";
 import AbsenceTab from "./components/admin/AbsenceTab";
@@ -34,7 +34,8 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout } = useAuth();
 
   return (
-    <div className="flex min-h-screen bg-[#F8FAFC] font-sans selection:bg-blue-500/30">
+    <div className="flex min-h-screen bg-slate-50 font-sans selection:bg-blue-500/30 -z-10">
+      <div className="absolute top-0 inset-x-0 h-96 bg-linear-to-b from-blue-100/40 to-transparent pointer-events-none"></div>
       {/* SIDEBAR CINEMÁTICO */}
       <aside className="w-72 bg-slate-950 border-r border-slate-800 flex flex-col relative overflow-hidden shrink-0">
         {/* Glow effect sutil de fondo */}
@@ -123,7 +124,6 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
       {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-x-hidden relative flex flex-col min-h-screen">
         {/* Glow effect sutil superior */}
-        <div className="absolute top-0 inset-x-0 h-64 bg-linear-to-b from-slate-200/50 to-transparent pointer-events-none z-0"></div>
         <div className="relative z-10 flex-1 p-4 md:p-8">{children}</div>
       </main>
     </div>
@@ -169,7 +169,7 @@ export default function App() {
           <>
             <Route path="/admin" element={<AdminOverview />} />
             {/* Temporalmente inyectamos los Tabs viejos en las rutas nuevas */}
-            <Route path="/admin/employees" element={<EmployeeTab />} />
+            <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/shifts" element={<ShiftTab />} />
             <Route path="/admin/calendar" element={<CalendarTab />} />
             <Route path="/admin/absences" element={<AbsenceTab />} />
