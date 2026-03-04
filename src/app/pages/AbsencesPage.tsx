@@ -12,6 +12,7 @@ import ActionMenu from "../components/ui/ActionMenu";
 import DataTable from "../components/ui/DataTable";
 import Modal from "../components/ui/Modal";
 import AbsenceForm from "../components/admin/AbsenceForm";
+import AdminPageHeader from "../components/ui/AdminPageHeader";
 
 const manageAbsences = new ManageAbsences();
 const manageEmployees = new ManageEmployees();
@@ -191,22 +192,13 @@ export default function AbsencesPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-800 tracking-tight">
-            Permisos y Ausencias
-          </h1>
-          <p className="text-slate-500 mt-1 font-normal">
-            Gestión de faltas, vacaciones y justificantes médicos.
-          </p>
-        </div>
-        <button
-          onClick={handleOpenCreateModal}
-          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm w-fit"
-        >
-          <Plus size={18} /> Registrar Ausencia
-        </button>
-      </div>
+      <AdminPageHeader
+        title="Permisos y Ausencias"
+        description="Gestión de faltas, vacaciones y justificantes médicos."
+        actionLabel="Registrar Ausencia"
+        actionIcon={<Plus size={18} />}
+        onAction={handleOpenCreateModal}
+      />
 
       <DataTable
         columns={columns}

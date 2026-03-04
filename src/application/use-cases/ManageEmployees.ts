@@ -68,7 +68,14 @@ export class ManageEmployees {
   // --- CREAR EMPLEADO ---
   async createEmployee(
     data: EmployeeFormData,
-  ): Promise<{ uid: string; empNo: string; tempPass: string }> {
+  ): Promise<{
+    uid: string;
+    empNo: string;
+    tempPass: string;
+    email: string;
+    phone: string;
+    fullName: string;
+  }> {
     if (
       !data.email ||
       !data.fullName ||
@@ -85,8 +92,15 @@ export class ManageEmployees {
       // 1. Generar Número Numérico (1000 a 9999)
       const generatedEmpNo = Math.floor(1000 + Math.random() * 9000).toString();
 
-      // 2. Generar Contraseña Sencilla pero válida (6+ caracteres)
-      const generatedPassword = `hola${generatedEmpNo}`;
+      // 2. GENERADOR CRIPTOGRÁFICO SEGURO (Adiós warnings de GitHub)
+      const generateSecurePassword = () => {
+        const chars =
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^*";
+        return Array.from(crypto.getRandomValues(new Uint32Array(10)))
+          .map((x) => chars[x % chars.length])
+          .join("");
+      };
+      const generatedPassword = generateSecurePassword();
 
       // 3. Crear en Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(
@@ -97,7 +111,7 @@ export class ManageEmployees {
       const newUid = userCredential.user.uid;
       await signOut(secondaryAuth);
 
-      // 4. Guardar en Firestore (incluyendo el teléfono)
+      // 4. Guardar en Firestore
       const newUser: User = {
         id: newUid,
         email: data.email,
@@ -112,11 +126,14 @@ export class ManageEmployees {
 
       await setDoc(doc(db, "users", newUid), newUser);
 
-      // DEVOLVEMOS LOS DATOS PARA MOSTRARLOS EN PANTALLA
+      // DEVOLVEMOS TODOS LOS DATOS PARA EL TOAST
       return {
         uid: newUid,
         empNo: generatedEmpNo,
         tempPass: generatedPassword,
+        email: data.email,
+        phone: data.phone,
+        fullName: data.fullName,
       };
     } catch (error: unknown) {
       if (error instanceof Error) {
@@ -167,12 +184,13 @@ export class ManageEmployees {
   // --- ELIMINACIÓN PERMANENTE (Hard Delete) ---
   async deleteEmployeeFromDatabase(uid: string): Promise<void> {
     try {
-      await deleteDoc(doc(db, 'users', uid));
+      await deleteDoc(doc(db, "users", uid));
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Error desconocido";
-      throw new Error(`Error al eliminar permanentemente al empleado de la base de datos: ${errorMessage}`);
+      throw new Error(
+        `Error al eliminar permanentemente al empleado de la base de datos: ${errorMessage}`,
+      );
     }
   }
-
 }

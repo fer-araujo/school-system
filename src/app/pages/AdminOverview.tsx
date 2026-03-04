@@ -6,7 +6,7 @@ import type { AttendanceWithWorker } from "../../domain/models/User";
 import type { ColumnDef } from "../components/ui/DataTable";
 import { getAvatarColor } from "../../utils/helpers";
 import DataTable from "../components/ui/DataTable";
-
+import AdminPageHeader from "../components/ui/AdminPageHeader";
 
 const attendanceRepo = new FirebaseAttendanceRepository();
 const listenAttendancesUseCase = new ListenDailyAttendances(attendanceRepo);
@@ -118,16 +118,10 @@ export default function AdminOverview() {
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
       {/* HEADER LIMPIO */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-800 tracking-tight">
-            Resumen Global
-          </h1>
-          <p className="text-slate-500 mt-1 font-normal">
-            Monitoreo de asistencia y rendimiento en tiempo real.
-          </p>
-        </div>
-      </div>
+      <AdminPageHeader
+        title="Resumen Global"
+        description="Monitoreo de asistencia y rendimiento en tiempo real."
+      />
 
       {/* TARJETAS PREMIUM */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">

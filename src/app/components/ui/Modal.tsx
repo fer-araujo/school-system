@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
+import { createPortal } from "react-dom"; // 1. IMPORTAMOS createPortal
 
 interface ModalProps {
   isOpen: boolean;
@@ -16,10 +17,10 @@ export default function Modal({
 }: ModalProps) {
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-in fade-in duration-200">
+  return createPortal(
+    <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-100 flex justify-center items-center p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-white">
+        <div className="p-5 flex items-center justify-between bg-white">
           <h3 className="text-lg font-semibold text-slate-800 tracking-tight">
             {title}
           </h3>
@@ -37,6 +38,7 @@ export default function Modal({
           {children}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

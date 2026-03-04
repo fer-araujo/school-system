@@ -8,6 +8,7 @@ import ActionMenu, { type ActionMenuItem } from "../components/ui/ActionMenu";
 import DataTable from "../components/ui/DataTable";
 import Modal from "../components/ui/Modal";
 import HolidayForm from "../components/admin/HolidayForm";
+import AdminPageHeader from "../components/ui/AdminPageHeader";
 
 const manageHolidays = new ManageHolidays();
 
@@ -123,25 +124,16 @@ export default function HolidaysPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-800 tracking-tight">
-            Calendario Escolar
-          </h1>
-          <p className="text-slate-500 mt-1 font-normal">
-            Días de asueto oficial y cierres internos de la escuela.
-          </p>
-        </div>
-        <button
-          onClick={() => {
-            setHolidayToEdit(null);
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm w-fit cursor-pointer"
-        >
-          <CalendarDays size={18} /> Agregar Fecha
-        </button>
-      </div>
+      <AdminPageHeader
+        title="Calendario Escolar"
+        description="Días de asueto oficial y cierres internos de la escuela."
+        actionLabel="Agregar Fecha"
+        actionIcon={<CalendarDays size={18} />}
+        onAction={() => {
+          setHolidayToEdit(null);
+          setIsModalOpen(true);
+        }}
+      />
 
       <DataTable
         columns={columns}

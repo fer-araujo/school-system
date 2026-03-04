@@ -9,6 +9,7 @@ import ActionMenu from "../components/ui/ActionMenu";
 import Modal from "../components/ui/Modal";
 import ShiftForm, { type ShiftFormData } from "../components/admin/ShiftForm";
 import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
+import AdminPageHeader from "../components/ui/AdminPageHeader";
 
 // Inicializamos el caso de uso
 const shiftRepo = new FirebaseShiftRepository();
@@ -177,22 +178,13 @@ export default function ShiftsPage() {
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-semibold text-slate-800 tracking-tight">
-            Turnos y Horarios
-          </h1>
-          <p className="text-slate-500 mt-1 font-normal">
-            Catálogo de horarios laborales para asignación de personal.
-          </p>
-        </div>
-        <button
-          onClick={handleOpenCreateModal}
-          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm w-fit"
-        >
-          <Plus size={18} /> Nuevo Turno
-        </button>
-      </div>
+      <AdminPageHeader
+        title="Turnos y Horarios"
+        description="Catálogo de horarios laborales para asignación de personal."
+        actionLabel="Nuevo Turno"
+        actionIcon={<Plus size={18} />}
+        onAction={handleOpenCreateModal}
+      />
 
       {/* DATAGRID REUTILIZABLE */}
       <DataTable
