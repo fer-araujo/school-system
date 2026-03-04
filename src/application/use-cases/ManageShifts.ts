@@ -13,20 +13,29 @@ export class ManageShifts {
   }
 
   // 1. Crear un nuevo turno (Molde)
-  async createShift(name: string, blocks: TimeBlock[]): Promise<void> {
-    this.validateShiftData(name, blocks);
+  async createShift(data: Omit<Shift, "id">): Promise<void> {
+    // BLINDAJE: Validamos los datos antes de hacer cualquier cosa
+    this.validateShiftData(data.name, data.blocks);
+
     const shiftId = `shift_${Date.now()}`;
-    await this.shiftRepo.saveShift({ id: shiftId, name, blocks });
+
+    const newShift: Shift = {
+      id: shiftId,
+      name: data.name,
+      blocks: data.blocks,
+      workDays: data.workDays,
+      toleranceMinutes: data.toleranceMinutes,
+    };
+
+    await this.shiftRepo.saveShift(newShift);
   }
 
-  async updateShift(
-    shiftId: string,
-    name: string,
-    blocks: TimeBlock[],
-  ): Promise<void> {
-    if (!shiftId) throw new Error("ID de turno requerido para actualizar.");
-    this.validateShiftData(name, blocks);
-    await this.shiftRepo.saveShift({ id: shiftId, name, blocks });
+  // Editar un turno existente
+  async updateShift(data: Shift): Promise<void> {
+    // BLINDAJE: También validamos al momento de editar
+    this.validateShiftData(data.name, data.blocks);
+
+    await this.shiftRepo.saveShift(data);
   }
 
   async deleteShift(shiftId: string): Promise<void> {
@@ -51,7 +60,9 @@ export class ManageShifts {
     }
 
     if (validUntil && validFrom > validUntil) {
-      throw new Error("La fecha de inicio no puede ser posterior a la fecha de fin.");
+      throw new Error(
+        "La fecha de inicio no puede ser posterior a la fecha de fin.",
+      );
     }
 
     // Usamos el spread operator condicional para evitar el "undefined"

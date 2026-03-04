@@ -1,4 +1,4 @@
-import type { Holiday } from "../models/Calendar";
+import type { Holiday } from "../models/Holiday";
 
 export class CalendarLogic {
   // Feriados fijos de México (MM-DD)

@@ -1,30 +1,33 @@
-import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
-import type { Holiday } from "../../domain/models/Calendar";
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  updateDoc,
+} from "firebase/firestore";
+import { db } from "../../infrastructure/firebase/config";
+import type { Holiday } from "../../domain/models/Holiday";
 
 export class ManageHolidays {
-  private calendarRepo: CalendarRepository;
-
-  constructor(calendarRepo: CalendarRepository) {
-    this.calendarRepo = calendarRepo;
+  async getHolidays(): Promise<Holiday[]> {
+    const snap = await getDocs(collection(db, "holidays"));
+    const holidays = snap.docs.map((doc) => doc.data() as Holiday);
+    // Ordenamos cronológicamente
+    return holidays.sort((a, b) => a.date.localeCompare(b.date));
   }
 
-  async getUpcoming(): Promise<Holiday[]> {
-    // Directo de la base de datos, limpio y sencillo
-    return await this.calendarRepo.getUpcomingHolidays();
+  async createHoliday(data: Omit<Holiday, "id">): Promise<void> {
+    const newId = `hol_${Date.now()}`;
+    await setDoc(doc(db, "holidays", newId), { ...data, id: newId });
   }
 
-  async save(
-    date: string,
-    reason: string,
-    type: Holiday["type"],
-  ): Promise<void> {
-    if (!date || !reason)
-      throw new Error("La fecha y el motivo son obligatorios.");
-    await this.calendarRepo.saveHoliday({ date, reason, type });
+  async updateHoliday(data: Holiday): Promise<void> {
+    const ref = doc(db, "holidays", data.id);
+    await updateDoc(ref, { ...data });
   }
 
-  async delete(date: string): Promise<void> {
-    if (!date) throw new Error("Se requiere una fecha para eliminar.");
-    await this.calendarRepo.deleteHoliday(date);
+  async deleteHoliday(id: string): Promise<void> {
+    await deleteDoc(doc(db, "holidays", id));
   }
 }

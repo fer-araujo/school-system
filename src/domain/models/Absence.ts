@@ -1,9 +1,11 @@
-export type AbsenceType = 'VACATION' | 'SICK_LEAVE';
+export type AbsenceType = "Enfermedad" | "Vacaciones" | "Permiso Personal" | "Falta Injustificada";
 
 export interface Absence {
-  id: string;       // Formato: UID_YYYY-MM-DD
-  userId: string;
-  date: string;     // YYYY-MM-DD
+  id: string;
+  userId: string;       // El ID del maestro que falta
+  employeeName?: string; // Lo inyectaremos en memoria para la tabla
   type: AbsenceType;
-  notes: string;    // Ej: "Receta IMSS #123"
+  startDate: string;    // Formato YYYY-MM-DD
+  endDate: string;      // Formato YYYY-MM-DD
+  notes: string;        // Ej: "Justificado con receta médica"
 }

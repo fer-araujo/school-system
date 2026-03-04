@@ -1,4 +1,4 @@
-import type { Holiday } from "../models/Calendar";
+import type { Holiday } from "../models/Holiday";
 
 export interface CalendarRepository {
   getHolidayByDate(date: string): Promise<Holiday | null>;

@@ -1,55 +1,64 @@
-import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
-import type { Absence, AbsenceType } from "../../domain/models/Absence";
+// src/application/use-cases/ManageAbsences.ts
+import {
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  updateDoc,
+} from "firebase/firestore";
+import { db } from "../../infrastructure/firebase/config";
+import type { Absence } from "../../domain/models/Absence";
+import type { User } from "../../domain/models/User";
 
 export class ManageAbsences {
-  private absenceRepo: AbsenceRepository;
+  // Obtiene todos los permisos y les inyecta el nombre del maestro
+  async getAllAbsences(): Promise<Absence[]> {
+    // 1. Traemos los usuarios para el "Diccionario"
+    const usersSnap = await getDocs(collection(db, "users"));
+    const userMap = new Map<string, string>();
+    usersSnap.forEach((doc) => {
+      const user = doc.data() as User;
+      userMap.set(user.id, user.fullName);
+    });
 
-  constructor(absenceRepo: AbsenceRepository) {
-    this.absenceRepo = absenceRepo;
+    // 2. Traemos las ausencias
+    const absencesSnap = await getDocs(collection(db, "absences"));
+    const absences = absencesSnap.docs.map((doc) => {
+      const data = doc.data() as Absence;
+      return {
+        ...data,
+        employeeName: userMap.get(data.userId) || "Empleado Eliminado",
+      };
+    });
+
+    // 3. Ordenamos por fecha de inicio (las más recientes primero)
+    return absences.sort((a, b) => b.startDate.localeCompare(a.startDate));
   }
 
-  /**
-   * Genera y guarda un registro de ausencia por cada día en el rango especificado.
-   */
-  async assignAbsenceRange(
-    userId: string, 
-    startDateIso: string, 
-    endDateIso: string, 
-    type: AbsenceType, 
-    notes: string
+  async createAbsence(
+    data: Omit<Absence, "id" | "employeeName">,
   ): Promise<void> {
-    
-    if (!userId || !startDateIso || !endDateIso) {
-      throw new Error("Faltan datos obligatorios para registrar la ausencia.");
-    }
+    const newId = `abs_${Date.now()}`;
+    await setDoc(doc(db, "absences", newId), { ...data, id: newId });
+  }
 
-    const start = new Date(`${startDateIso}T00:00:00`);
-    const end = new Date(`${endDateIso}T00:00:00`);
+  async updateAbsence(data: Absence): Promise<void> {
+    const ref = doc(db, "absences", data.id);
 
-    if (start > end) {
-      throw new Error("La fecha de inicio no puede ser mayor a la fecha de fin.");
-    }
+    // Armamos el objeto explícitamente sin el employeeName para que el linter sea feliz
+    const cleanData = {
+      userId: data.userId,
+      type: data.type,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      notes: data.notes,
+    };
 
-    const absencesToSave: Absence[] = [];
-    const currentDate = new Date(start);
+    await updateDoc(ref, cleanData);
+  }
 
-    // Bucle para crear un registro por cada día en el rango
-    while (currentDate <= end) {
-      const dateString = currentDate.toLocaleDateString('en-CA'); // YYYY-MM-DD
-      
-      absencesToSave.push({
-        id: `${userId}_${dateString}`,
-        userId,
-        date: dateString,
-        type,
-        notes
-      });
-
-      // Avanzamos al día siguiente
-      currentDate.setDate(currentDate.getDate() + 1);
-    }
-
-    // Guardamos todo el lote en Firebase
-    await this.absenceRepo.saveAbsences(absencesToSave);
+  async deleteAbsence(id: string): Promise<void> {
+    await deleteDoc(doc(db, "absences", id));
   }
 }

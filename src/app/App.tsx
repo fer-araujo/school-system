@@ -18,17 +18,15 @@ import NavItem from "./components/ui/NavItem";
 
 // --- PÁGINAS GENERALES ---
 import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
+import Dashboard from "./pages/TeacherQR";
 import Scanner from "./pages/Scanner";
 
 // --- PÁGINAS ADMIN (Las nuevas) ---
 import AdminOverview from "./pages/AdminOverview";
 import EmployeesPage from "./pages/EmployeesPage";
-
-// --- COMPONENTES ADMIN (Los antiguos Tabs que usaremos como páginas temporalmente) ---
-import ShiftTab from "./components/admin/ShiftTab";
-import CalendarTab from "./components/admin/CalendarTab";
-import AbsenceTab from "./components/admin/AbsenceTab";
+import ShiftsPage from "./pages/ShiftPage";
+import AbsencesPage from "./pages/AbsencesPage";
+import HolidaysPage from "./pages/HolidaysPage";
 
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout } = useAuth();
@@ -78,8 +76,6 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
             <NavItem to="/" icon={LayoutDashboard} label="Mi Gafete" />
           )}
 
-          <NavItem to="/scan" icon={QrCode} label="Escanear QR" />
-
           {user?.role === "ADMIN" && (
             <>
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-8">
@@ -90,6 +86,7 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
                 icon={LayoutDashboard}
                 label="Resumen Global"
               />
+              <NavItem to="/scan" icon={QrCode} label="Escanear QR" />
               <NavItem
                 to="/admin/employees"
                 icon={Users}
@@ -163,16 +160,15 @@ export default function App() {
             )
           }
         />{" "}
-        <Route path="/scan" element={<Scanner />} />
         {/* Rutas Exclusivas ADMIN */}
         {user.role === "ADMIN" && (
           <>
             <Route path="/admin" element={<AdminOverview />} />
-            {/* Temporalmente inyectamos los Tabs viejos en las rutas nuevas */}
+            <Route path="/admin/scan" element={<Scanner />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
-            <Route path="/admin/shifts" element={<ShiftTab />} />
-            <Route path="/admin/calendar" element={<CalendarTab />} />
-            <Route path="/admin/absences" element={<AbsenceTab />} />
+            <Route path="/admin/shifts" element={<ShiftsPage />} />
+            <Route path="/admin/calendar" element={<HolidaysPage />} />
+            <Route path="/admin/absences" element={<AbsencesPage />} />
           </>
         )}
         {/* Fallback */}

@@ -1,4 +1,4 @@
-import type { Holiday, HolidayType } from "../../domain/models/Calendar";
+import type { Holiday, HolidayType } from "../../domain/models/Holiday";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 import { db } from "../firebase/config";
 import {
