@@ -4,30 +4,27 @@ import { useAuth } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
 
 // --- COMPONENTES UI ---
-import Sidebar from "./components/ui/Sidebar"; // <-- EL NUEVO IMPORT
+import Sidebar from "./components/ui/Sidebar";
 
 // --- PÁGINAS GENERALES ---
 import Login from "./pages/Login";
-import Dashboard from "./pages/TeacherQR";
-import Scanner from "./pages/Scanner";
+import TeacherQRCard from "./pages/TeacherQR";
+import ForcePasswordChange from "./pages/ForcePasswordChange";
 
 // --- PÁGINAS ADMIN ---
 import AdminOverview from "./pages/AdminOverview";
+import Scanner from "./pages/Scanner";
 import EmployeesPage from "./pages/EmployeesPage";
 import ShiftsPage from "./pages/ShiftPage";
 import AbsencesPage from "./pages/AbsencesPage";
 import HolidaysPage from "./pages/HolidaysPage";
 
-// --- MAIN LAYOUT LIMPIO ---
+// --- MAIN LAYOUT ---
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans selection:bg-blue-500/30 -z-10">
       <div className="absolute top-0 inset-x-0 h-96 bg-linear-to-b from-blue-100/40 to-transparent pointer-events-none"></div>
-
-      {/* NUESTRO NUEVO COMPONENTE EXTRAÍDO */}
       <Sidebar />
-
-      {/* CONTENIDO PRINCIPAL */}
       <main className="flex-1 overflow-x-hidden relative flex flex-col min-h-screen">
         <Toaster position="top-center" />
         <div className="relative z-10 flex-1 p-4 md:p-8">{children}</div>
@@ -47,6 +44,7 @@ export default function App() {
     );
   }
 
+  // Si no hay usuario, mandarlo al login
   if (!user) {
     return (
       <Routes>
@@ -55,6 +53,18 @@ export default function App() {
     );
   }
 
+  // <-- 2. LA TRAMPA DE SEGURIDAD (EL SECUESTRO) -->
+  // Si el usuario existe, pero tiene la bandera activa, bloqueamos TODAS las rutas normales
+  if (user.requiresPasswordChange) {
+    return (
+      <>
+        <Toaster position="top-center" />
+        <ForcePasswordChange />
+      </>
+    );
+  }
+
+  // 3. Si pasa las validaciones, le mostramos el sistema normal
   return (
     <MainLayout>
       <Routes>
@@ -63,9 +73,9 @@ export default function App() {
           path="/"
           element={
             user.role === "ADMIN" ? (
-              <Navigate to="/admin" replace />
+              <Navigate to="/admin/dashboard" replace />
             ) : (
-              <Dashboard />
+              <TeacherQRCard />
             )
           }
         />
@@ -73,7 +83,7 @@ export default function App() {
         {/* Rutas Exclusivas ADMIN */}
         {user.role === "ADMIN" && (
           <>
-            <Route path="/admin" element={<AdminOverview />} />
+            <Route path="/admin/dashboard" element={<AdminOverview />} />
             <Route path="/admin/scan" element={<Scanner />} />
             <Route path="/admin/employees" element={<EmployeesPage />} />
             <Route path="/admin/shifts" element={<ShiftsPage />} />

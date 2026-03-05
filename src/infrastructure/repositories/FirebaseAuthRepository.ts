@@ -1,8 +1,8 @@
-import { auth, db } from "../../infrastructure/firebase/config";
+import { auth, db } from "../firebase/config";
 import { signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
-import type { AuthRepository } from "./AuthRepository";
-import type { User } from "../models/User";
+import type { AuthRepository } from "../../domain/repositories/AuthRepository";
+import type { User } from "../../domain/models/User";
 
 export class FirebaseAuthRepository implements AuthRepository {
   async login(email: string, pass: string): Promise<User> {

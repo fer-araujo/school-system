@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { FirebaseAuthRepository } from '../../domain/repositories/FirebaseAuthRepository';
+import { FirebaseAuthRepository } from '../../infrastructure/repositories/FirebaseAuthRepository';
 import type { User } from '../../domain/models/User';
 
 interface AuthContextType {

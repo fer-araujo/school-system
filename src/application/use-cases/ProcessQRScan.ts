@@ -1,6 +1,6 @@
 import type { AttendanceRepository } from "../../domain/repositories/AttendanceRepository";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
-import type { QRPayload } from "../../domain/logic/QRPayloadBuilder";
+import type { QRPayload } from "../../domain/logic/QRPayloadBuilder"; // Asumo que lo tienes aquí
 import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
 import type { ShiftRepository } from "../../domain/repositories/ShiftRepository";
 
@@ -25,48 +25,62 @@ export class ProcessQRScan {
   async execute(rawQrString: string): Promise<string> {
     try {
       const payload = JSON.parse(rawQrString) as QRPayload;
-      
-      // 1. Validar que vengan todos los datos, incluyendo el timestamp (t)
-      if (!payload.uid || !payload.date || !payload.type || !payload.t) {
+
+      // 1. Validar que vengan todos los datos
+      if (
+        !payload.uid ||
+        !payload.emp ||
+        !payload.date ||
+        !payload.type ||
+        !payload.t
+      ) {
         throw new Error("QR inválido o formato incorrecto.");
       }
 
       const now = new Date();
 
-      // --- 2. ESCUDO ANTI-TRAMPAS (Capturas de pantalla) ---
-      // Calculamos cuántos segundos han pasado desde que el maestro generó el QR
+      // --- 2. ESCUDO ANTI-TRAMPAS ---
       const qrAgeInSeconds = (now.getTime() - payload.t) / 1000;
       if (qrAgeInSeconds > 60) {
-        throw new Error("QR Expirado. Por seguridad, el código dura 60 segundos. Genera uno nuevo.");
+        throw new Error(
+          "QR Expirado. Por seguridad, el código dura 60 segundos. Genera uno nuevo.",
+        );
       }
 
       const today = now.toLocaleDateString("en-CA");
 
       // 3. Validar QR del día correcto
-      if (payload.date !== today) throw new Error("QR Caducado (Fecha de otro día).");
+      if (payload.date !== today)
+        throw new Error("QR Caducado (Fecha de otro día).");
 
-      // 4. Validar Feriados
+      // 4. Validar Feriados (CORREGIDO: holiday.name en lugar de holiday.reason)
       const holiday = await this.calendarRepo.getHolidayByDate(today);
-      if (holiday) throw new Error(`Bloqueado: Hoy es ${holiday.reason}.`);
+      if (holiday) throw new Error(`Bloqueado: Hoy es ${holiday.name}.`);
 
       // 5. Validar Incapacidades
-      const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(payload.uid, today);
+      const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(
+        payload.uid,
+        today,
+      );
       if (userAbsence) {
-        throw new Error(`Acceso denegado: Estás de ${userAbsence.type === "VACATION" ? "Vacaciones" : "Incapacidad"}.`);
+        throw new Error(
+          `Acceso denegado: Estás de ${userAbsence.type === "Vacaciones" ? "Vacaciones" : "Incapacidad"}.`,
+        );
       }
 
       // --- 6. LÓGICA DE TURNOS Y RETARDOS ---
       let isLate = false;
 
       if (payload.type === "ENTRY") {
-        // CORRECCIÓN: Buscamos por uid, que es como se guardó la asignación en ManageShifts
-        const assignment = await this.shiftRepo.getActiveAssignmentForUser(payload.uid, today);
-        
+        const assignment = await this.shiftRepo.getActiveAssignmentForUser(
+          payload.uid,
+          today,
+        );
+
         if (assignment) {
           const shift = await this.shiftRepo.getShiftById(assignment.shiftId);
           if (shift && shift.blocks.length > 0) {
-            
-            // A) Encontrar el bloque horario más cercano a la hora actual
+            // A) Encontrar el bloque horario más cercano
             let closestBlock = shift.blocks[0];
             let minDiff = Infinity;
 
@@ -82,23 +96,24 @@ export class ProcessQRScan {
               }
             });
 
-            // B) Calcular si llegó tarde al bloque más cercano
+            // B) Calcular retardo
             const [h, m] = closestBlock.start.split(":").map(Number);
             const blockStart = new Date();
             blockStart.setHours(h, m, 0, 0);
 
-            const toleranceMs = 10 * 60 * 1000; // 10 Minutos de gracia
+            const toleranceMs = 10 * 60 * 1000; // 10 Minutos
 
             if (now.getTime() > blockStart.getTime() + toleranceMs) {
-              isLate = true; // ¡Retardo detectado!
+              isLate = true;
             }
           }
         }
       }
 
-      // 7. Guardar Asistencia
+      // 7. Guardar Asistencia (CORREGIDO: Agregado payload.emp como segundo parámetro)
       await this.attendanceRepo.recordScan(
         payload.uid,
+        payload.emp,
         payload.date,
         payload.type,
         now,
@@ -107,9 +122,9 @@ export class ProcessQRScan {
 
       const statusMsg = payload.type === "ENTRY" ? "Entrada" : "Salida";
       return `Éxito: ${statusMsg} registrada. ${isLate ? "(Con Retardo)" : ""}`;
-      
     } catch (error: unknown) {
-      if (error instanceof SyntaxError) throw new Error("Código ajeno al sistema.");
+      if (error instanceof SyntaxError)
+        throw new Error("Código ajeno al sistema.");
       if (error instanceof Error) throw error;
       throw new Error("Error desconocido al procesar.");
     }

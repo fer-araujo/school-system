@@ -4,8 +4,6 @@ import {
   getDoc,
   setDoc,
   collection,
-  query,
-  where,
   getDocs,
   deleteDoc,
 } from "firebase/firestore";
@@ -34,9 +32,11 @@ export class FirebaseShiftRepository implements ShiftRepository {
   // --- ASIGNACIONES A MAESTROS ---
 
   async saveAssignment(assignment: ShiftAssignment): Promise<void> {
-    // Usamos el ID generado o creamos uno nuevo con el timestamp
-    const id = assignment.id || `assign_${assignment.userId}_${Date.now()}`;
+    // 🟢 LA SOLUCIÓN: Un solo documento por empleado. Adiós al Date.now()
+    const id = `assign_${assignment.userId}`;
     const docRef = doc(db, "shift_assignments", id);
+
+    // Al usar setDoc con este ID fijo, si el empleado cambia de turno, sobrescribe el viejo.
     await setDoc(docRef, { ...assignment, id });
   }
 
@@ -44,26 +44,26 @@ export class FirebaseShiftRepository implements ShiftRepository {
     userId: string,
     targetDate: string,
   ): Promise<ShiftAssignment | null> {
-    // Buscamos todas las asignaciones del usuario
-    const q = query(
-      collection(db, "shift_assignments"),
-      where("userId", "==", userId),
-    );
-    const snap = await getDocs(q);
+    const docRef = doc(db, "shift_assignments", `assign_${userId}`);
+    const snap = await getDoc(docRef);
 
-    if (snap.empty) return null;
+    if (snap.exists()) {
+      const assignment = snap.data() as ShiftAssignment;
 
-    const assignments = snap.docs.map((doc) => doc.data() as ShiftAssignment);
+      // Validamos que la fecha actual (targetDate) esté dentro del rango de validez de la asignación
+      const isAfterStart = targetDate >= assignment.validFrom;
+      const isBeforeEnd = assignment.validUntil
+        ? targetDate <= assignment.validUntil
+        : true;
 
-    // Filtramos en JavaScript para encontrar la que coincida con la fecha objetivo
-    // (Firestore no es muy bueno haciendo validaciones de rangos superpuestos)
-    const active = assignments.find((a) => {
-      const isAfterStart = targetDate >= a.validFrom;
-      const isBeforeEnd = a.validUntil ? targetDate <= a.validUntil : true;
-      return isAfterStart && isBeforeEnd;
-    });
+      // Solo devolvemos la asignación si ya entró en vigor y no ha expirado
+      if (isAfterStart && isBeforeEnd) {
+        return assignment;
+      }
+    }
 
-    return active || null;
+    // Si no existe, o si existe pero su fecha aún no empieza (o ya caducó), devolvemos null
+    return null;
   }
 
   async deleteShift(shiftId: string): Promise<void> {

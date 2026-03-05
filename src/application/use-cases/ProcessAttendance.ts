@@ -24,16 +24,16 @@ export class ProcessAttendanceScan {
 
     let actualUserId = rawInput;
     let qrRequestedType: "ENTRY" | "EXIT" | null = null;
-    
+
     // REGLA 1: En vez de 'any', usamos el tipo oficial de Firebase para documentos
-    let userData: DocumentData | null = null; 
+    let userData: DocumentData | null = null;
 
     // 1. DESCIFRAR EL MENSAJE
     try {
       const parsedData = JSON.parse(rawInput);
       if (parsedData.uid) {
-        actualUserId = parsedData.uid; 
-        qrRequestedType = parsedData.type as "ENTRY" | "EXIT"; 
+        actualUserId = parsedData.uid;
+        qrRequestedType = parsedData.type as "ENTRY" | "EXIT";
       }
     } catch {
       // Si explota el JSON.parse, no pasa nada. Asumimos que la administradora tecleó a mano.
@@ -96,18 +96,21 @@ export class ProcessAttendanceScan {
     // EL GRAN CRUCE: Le hacemos caso al QR si lo trae. Si fue manual, el sistema deduce qué toca.
     const finalType = qrRequestedType || (isEntryFallback ? "ENTRY" : "EXIT");
 
-    // 5. CALCULAR RETARDO (Solo si es Entrada)
+    // 5. CALCULAR RETARDO Y BLOQUES SALTADOS
     let isLate = false;
+    let skippedBlocks = 0; // <--- NUEVO CONTADOR
+
     if (finalType === "ENTRY") {
       try {
-        const assignmentsQ = query(
-          collection(db, "shift_assignments"),
-          where("userId", "==", actualUserId),
-        );
-        const assignmentsSnap = await getDocs(assignmentsQ);
+        let activeShiftId = userData.shiftId;
+        if (!activeShiftId) {
+          const assignSnap = await getDoc(
+            doc(db, "shift_assignments", `assign_${actualUserId}`),
+          );
+          if (assignSnap.exists()) activeShiftId = assignSnap.data().shiftId;
+        }
 
-        if (!assignmentsSnap.empty) {
-          const activeShiftId = assignmentsSnap.docs[0].data().shiftId;
+        if (activeShiftId) {
           const shiftSnap = await getDoc(doc(db, "shifts", activeShiftId));
 
           if (shiftSnap.exists()) {
@@ -115,31 +118,73 @@ export class ProcessAttendanceScan {
             const blocks = shiftData.blocks || [];
             const tolerance = shiftData.toleranceMinutes || 0;
 
-            if (blocks[periodIndex]) {
-              const block = blocks[periodIndex];
-              const [startHour, startMin] = block.start.split(":").map(Number);
+            if (blocks.length === 0)
+              throw new Error("Acceso denegado: El turno no tiene horarios.");
+
+            let targetBlockIndex = -1;
+
+            // Buscamos en qué bloque estamos según el reloj
+            for (let i = 0; i < blocks.length; i++) {
+              const [endHour, endMin] = blocks[i].end.split(":").map(Number);
+              const expectedEndMinutes = endHour * 60 + endMin;
+
+              if (currentMinutes <= expectedEndMinutes) {
+                targetBlockIndex = i;
+                break;
+              }
+            }
+
+            if (targetBlockIndex !== -1) {
+              // 🚨 CÁLCULO DE FALTAS ANTERIORES
+              if (targetBlockIndex > periodIndex) {
+                // Si le toca el bloque 1, pero tiene 0 registros, saltó 1 bloque.
+                skippedBlocks = targetBlockIndex - periodIndex;
+              } else if (targetBlockIndex < periodIndex) {
+                throw new Error(
+                  "Desajuste de turnos. Contacta a administración.",
+                );
+              }
+
+              const targetBlock = blocks[targetBlockIndex];
+              const [startHour, startMin] = targetBlock.start
+                .split(":")
+                .map(Number);
               const expectedStartMinutes = startHour * 60 + startMin;
 
+              // Revisamos si llegó tarde al bloque que SÍ le toca
               if (currentMinutes > expectedStartMinutes + tolerance) {
                 isLate = true;
               }
+            } else {
+              const lastBlock = blocks[blocks.length - 1];
+              throw new Error(
+                `Acceso denegado: Tu turno finalizó a las ${lastBlock.end}.`,
+              );
             }
+          } else {
+            throw new Error("Acceso denegado: El turno fue eliminado.");
           }
+        } else {
+          throw new Error("Acceso denegado: No tienes un turno asignado.");
         }
       } catch (error) {
-        console.error("Error calculando retardo:", error);
+        if (error instanceof Error && error.message.includes("Acceso denegado"))
+          throw error;
       }
     }
 
-    // 6. GUARDAR EN FIREBASE (Tu viejo y confiable repositorio)
+    // 6. GUARDAR EN FIREBASE (Enviamos los bloques saltados)
     await this.attendanceRepo.recordScan(
       actualUserId,
+      userData.employeeNumber || "0000",
       dateStr,
       finalType,
       now,
       isLate,
+      skippedBlocks, // <--- LE PASAMOS EL DATO AL REPO
     );
 
+    // 7. DEVOLVEMOS EL MENSAJE PARA EL KIOSCO
     return {
       employeeName: userData.fullName || "Empleado",
       time: now.toLocaleTimeString("es-MX", {
@@ -148,6 +193,7 @@ export class ProcessAttendanceScan {
       }),
       isLate,
       type: finalType,
+      skippedBlocks, // <--- Enviamos esto a la vista
     };
   }
 }

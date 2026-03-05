@@ -6,12 +6,24 @@ import {
   collection,
   updateDoc,
   deleteDoc,
+  where,
+  query,
 } from "firebase/firestore"; // Añadido updateDoc
 import { db, secondaryAuth } from "../../infrastructure/firebase/config";
 import type { User } from "../../domain/models/User";
 import type { EmployeeFormData } from "../../app/components/admin/EmployeeForm";
 
 export class ManageEmployees {
+
+  async countActiveWorkers(): Promise<number> {
+    const q = query(
+      collection(db, "users"),
+      where("role", "==", "WORKER"),
+      where("isActive", "==", true),
+    );
+    const snap = await getDocs(q);
+    return snap.size;
+  }
   async getAllWorkers(): Promise<User[]> {
     // Obtenemos la fecha de hoy para saber cuál es el turno "activo"
     const today = new Date().toLocaleDateString("en-CA");
@@ -66,9 +78,7 @@ export class ManageEmployees {
   }
 
   // --- CREAR EMPLEADO ---
-  async createEmployee(
-    data: EmployeeFormData,
-  ): Promise<{
+  async createEmployee(data: EmployeeFormData): Promise<{
     uid: string;
     empNo: string;
     tempPass: string;
@@ -122,6 +132,7 @@ export class ManageEmployees {
         department: data.department,
         position: data.position,
         isActive: true,
+        requiresPasswordChange: true,
       };
 
       await setDoc(doc(db, "users", newUid), newUser);

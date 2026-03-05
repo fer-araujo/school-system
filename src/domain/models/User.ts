@@ -12,12 +12,14 @@ export interface User {
   shiftId?: string;
   shiftName?: string;
   isActive: boolean;
+  requiresPasswordChange?: boolean;
 }
 
 export interface WorkPeriod {
   checkIn: Date;
   checkOut?: Date;
   isLate?: boolean;
+  isAbsent?: boolean;
 }
 
 export type AttendanceStatus =
@@ -31,6 +33,7 @@ export type AttendanceStatus =
 export interface Attendance {
   id: string;
   userId: string;
+  employeeNumber: string;
   date: string;
   periods: WorkPeriod[];
   status: AttendanceStatus;

@@ -144,6 +144,11 @@ export default function TeacherQRCard() {
             ></div>
           </div>
         </div>
+        {import.meta.env.DEV && (
+              <pre className="mt-4 text-[10px] bg-slate-100 p-2 w-full overflow-x-auto text-slate-500 rounded border border-slate-200">
+                Payload: {qrPayload}
+              </pre>
+            )}
       </div>
     </div>
   );

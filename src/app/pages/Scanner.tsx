@@ -26,6 +26,7 @@ export default function Scanner() {
     time: string;
     isLate: boolean;
     type: "ENTRY" | "EXIT";
+    skippedBlocks?: number;
   } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +68,9 @@ export default function Scanner() {
         time: result.time,
         isLate: result.isLate,
         type: result.type as "ENTRY" | "EXIT",
+        skippedBlocks: (result as Record<string, unknown>).skippedBlocks as
+          | number
+          | undefined,
       });
 
       // Después de 3.5 segundos, la pantalla vuelve a la normalidad
@@ -79,7 +83,8 @@ export default function Scanner() {
       console.error(error);
       setStatus("error");
       setMessage(
-        (error instanceof Error ? error.message : String(error)) || "Error al registrar la asistencia."
+        (error instanceof Error ? error.message : String(error)) ||
+          "Error al registrar la asistencia.",
       );
 
       setTimeout(() => {
@@ -196,6 +201,12 @@ export default function Scanner() {
                   <XCircle size={16} /> Registrado con retardo
                 </div>
               )}
+              {employeeInfo.skippedBlocks && employeeInfo.skippedBlocks > 0 ? (
+                <div className="bg-rose-50 text-rose-700 px-4 py-2.5 rounded-lg text-sm font-semibold border border-rose-200 flex items-center gap-2 mt-2">
+                  <XCircle size={16} /> Falta registrada en{" "}
+                  {employeeInfo.skippedBlocks} bloque(s) anterior(es).
+                </div>
+              ) : null}
             </div>
           )}
         </div>

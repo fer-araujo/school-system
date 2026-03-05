@@ -4,7 +4,8 @@ interface NavItemProps {
   to: string;
   icon: LucideIcon;
   label: string;
-  isCollapsed?: boolean; // <-- NUEVA PROP
+  isCollapsed?: boolean;
+  end?: boolean;
 }
 
 export default function NavItem({
@@ -12,10 +13,12 @@ export default function NavItem({
   icon: Icon,
   label,
   isCollapsed = false,
+  end,
 }: NavItemProps) {
   return (
     <NavLink
       to={to}
+      end={end}
       className={({ isActive }) =>
         `flex items-center gap-3 rounded-xl transition-all duration-200 group relative ${
           isActive

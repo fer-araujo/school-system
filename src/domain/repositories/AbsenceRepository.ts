@@ -6,4 +6,6 @@ export interface AbsenceRepository {
     userId: string,
     date: string,
   ): Promise<Absence | null>;
+  countAbsencesByDate(date: string): Promise<number>;
+  getAbsencesByDate(date: string): Promise<Absence[]>;
 }

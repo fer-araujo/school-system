@@ -85,7 +85,8 @@ export default function Sidebar() {
       <nav
         className={`flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden z-10 transition-all duration-300 ${isCollapsed ? "p-3" : "p-4"}`}
       >
-        {!isCollapsed && (
+        {/* CORRECCIÓN 1: Solo mostrar 'Personal' si el usuario NO es ADMIN */}
+        {!isCollapsed && user?.role !== "ADMIN" && (
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-2 transition-all">
             Personal
           </div>
@@ -97,22 +98,25 @@ export default function Sidebar() {
             icon={LayoutDashboard}
             label="Mi Gafete"
             isCollapsed={isCollapsed}
+            end // <--- Propiedad opcional para match exacto
           />
         )}
 
         {user?.role === "ADMIN" && (
           <>
             {!isCollapsed && (
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-8 transition-all">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-2 transition-all">
                 Administración
               </div>
             )}
 
+            {/* CORRECCIÓN 2: Le pasamos 'end' para que solo se ilumine en coincidencia exacta */}
             <NavItem
               to="/admin"
               icon={LayoutDashboard}
               label="Resumen Global"
               isCollapsed={isCollapsed}
+              end
             />
             <NavItem
               to="/admin/scan"
