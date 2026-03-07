@@ -1,5 +1,6 @@
 import { Search, X, Download } from "lucide-react";
 import type { ReactNode } from "react";
+import CustomDatePicker from "./CustomDatePicker";
 
 interface AdminPageHeaderProps {
   title: string;
@@ -88,22 +89,33 @@ export default function AdminPageHeader({
         {/* FECHA ÚNICA */}
         {showSingleDate && !showDateRange && (
           <div className="w-full sm:w-auto">
-            <input
-              type="date"
+            <CustomDatePicker
               value={singleDate}
-              onChange={(e) => onSingleDateChange(e.target.value)}
-              className="px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 outline-none focus:ring-1 focus:ring-blue-500 hover:border-slate-300 transition-colors shadow-sm cursor-pointer w-full sm:w-auto"
+              onChange={(val) => onSingleDateChange(val as string)}
+              isDateDisabled={(date) => {
+                // Deshabilitar fechas futuras
+                const today = new Date();
+                const targetDate = new Date(date);
+                return targetDate > today;
+              }}
             />
           </div>
         )}
 
         {/* RANGO DE FECHAS */}
         {showDateRange && (
-          <div className="flex items-center gap-2 w-full sm:w-auto bg-white border border-slate-200 rounded-lg shadow-sm px-2 py-1.5 transition-colors hover:border-slate-300 focus-within:ring-1 focus-within:ring-blue-500">
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider ml-1 hidden md:block">
-              Rango:
-            </span>
-            <input
+          <div className="w-full sm:w-auto z-50">
+            <CustomDatePicker
+              mode="range"
+              value={dateRange} // Ya no es as string, es tu objeto {start, end}
+              onChange={(val) =>
+                onDateRangeChange(val as { start: string; end: string })
+              }
+              placeholder="Filtrar por rango..."
+              // Opcional: Si quieres evitar que busquen en el futuro en el dashboard:
+              maxDate={new Date().toLocaleDateString("en-CA")}
+            />
+            {/* <input
               type="date"
               value={dateRange.start}
               onChange={(e) =>
@@ -119,7 +131,7 @@ export default function AdminPageHeader({
                 onDateRangeChange({ ...dateRange, end: e.target.value })
               }
               className="px-2 py-1 bg-transparent text-sm font-medium text-slate-700 outline-none cursor-pointer w-31.25"
-            />
+            /> */}
           </div>
         )}
 

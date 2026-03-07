@@ -26,7 +26,20 @@ const MainLayout = ({ children }: { children: React.ReactNode }) => {
       <div className="absolute top-0 inset-x-0 h-96 bg-linear-to-b from-blue-100/40 to-transparent pointer-events-none"></div>
       <Sidebar />
       <main className="flex-1 overflow-x-hidden relative flex flex-col min-h-screen">
-        <Toaster position="top-center" />
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            className: "text-sm font-medium shadow-lg rounded-xl",
+            success: {
+              iconTheme: { primary: "#10b981", secondary: "white" },
+              style: { border: "1px solid #a7f3d0" },
+            },
+            error: {
+              iconTheme: { primary: "#f43f5e", secondary: "white" },
+              style: { border: "1px solid #fecdd3" },
+            },
+          }}
+        />
         <div className="relative z-10 flex-1 p-4 md:p-8">{children}</div>
       </main>
     </div>
@@ -58,7 +71,20 @@ export default function App() {
   if (user.requiresPasswordChange) {
     return (
       <>
-        <Toaster position="top-center" />
+        <Toaster
+          position="top-center"
+          toastOptions={{
+            className: "text-sm font-medium shadow-lg rounded-xl",
+            success: {
+              iconTheme: { primary: "#10b981", secondary: "white" },
+              style: { border: "1px solid #a7f3d0" },
+            },
+            error: {
+              iconTheme: { primary: "#f43f5e", secondary: "white" },
+              style: { border: "1px solid #fecdd3" },
+            },
+          }}
+        />
         <ForcePasswordChange />
       </>
     );

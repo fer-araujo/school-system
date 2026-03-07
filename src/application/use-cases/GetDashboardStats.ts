@@ -5,6 +5,7 @@ import type {
   AttendanceWithWorker,
   WorkPeriod,
 } from "../../domain/models/User";
+import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
 
 export interface DashboardTableRecord extends AttendanceWithWorker {
   department?: string;
@@ -85,6 +86,7 @@ export class GetDashboardStats {
         }
 
         // 2. Revisamos su turno
+        // 2. Revisamos su turno
         const assignment = await this.shiftRepo.getActiveAssignmentForUser(
           worker.id,
           targetDate,
@@ -92,6 +94,18 @@ export class GetDashboardStats {
         if (assignment) {
           const shift = shifts.find((s) => s.id === assignment.shiftId);
           if (shift && shift.blocks && shift.blocks.length > 0) {
+            // Forzamos la hora a mediodía para evitar saltos de zona horaria por UTC
+            const dateObj = new Date(targetDate + "T12:00:00");
+            const dayIndex = dateObj.getDay(); // 0 = Domingo, 1 = Lunes...
+
+            // Leemos el ID exacto ("Lunes", "Martes") de tu constante global
+            const targetDayId = WEEK_DAYS[dayIndex].id;
+
+            // Si el día de hoy NO está en los días laborables del turno, lo saltamos (descanso)
+            if (!shift.workDays.includes(targetDayId)) {
+              continue;
+            }
+
             expectedToday++;
 
             const block = shift.blocks[0];

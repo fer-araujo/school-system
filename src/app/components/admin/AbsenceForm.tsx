@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Loader2, CalendarX, FileText } from "lucide-react";
 import type { Absence, AbsenceType } from "../../../domain/models/Absence";
 import type { User } from "../../../domain/models/User";
+import CustomSelect from "../ui/CustomSelect";
+import CustomDatePicker, { type DateRange } from "../ui/CustomDatePicker";
+import { stringsToSelectOptions } from "../../../utils/helpers";
+import toast from "react-hot-toast";
+// import toast from "react-hot-toast"; // <-- Asumiendo que usaremos una librería, ajustaremos esto luego
 
 export type AbsenceFormData = Omit<Absence, "id" | "employeeName"> & {
   id?: string;
@@ -9,7 +14,7 @@ export type AbsenceFormData = Omit<Absence, "id" | "employeeName"> & {
 
 interface AbsenceFormProps {
   initialData?: Absence | null;
-  employees: User[]; // Necesitamos la lista para el dropdown
+  employees: User[];
   onSubmit: (data: AbsenceFormData) => Promise<void>;
   onCancel: () => void;
 }
@@ -21,6 +26,8 @@ const ABSENCE_TYPES: AbsenceType[] = [
   "Falta Injustificada",
 ];
 
+const absenceTypes = stringsToSelectOptions(ABSENCE_TYPES);
+
 export default function AbsenceForm({
   initialData,
   employees,
@@ -30,26 +37,46 @@ export default function AbsenceForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const isEditing = !!initialData;
 
+  // ESTADOS DEL FORMULARIO
   const [userId, setUserId] = useState(initialData?.userId || "");
   const [type, setType] = useState<AbsenceType>(
     initialData?.type || "Enfermedad",
   );
-  const [startDate, setStartDate] = useState(
-    initialData?.startDate || new Date().toLocaleDateString("en-CA"),
-  );
-  const [endDate, setEndDate] = useState(
-    initialData?.endDate || new Date().toLocaleDateString("en-CA"),
-  );
   const [notes, setNotes] = useState(initialData?.notes || "");
+
+  // 🌟 NUEVO: Unificamos inicio y fin en un solo estado de Rango
+  const [dateRange, setDateRange] = useState<DateRange>({
+    start: initialData?.startDate || "",
+    end: initialData?.endDate || "",
+  });
+
+  // 🌟 NUEVO: Estado para los Inline Errors
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!userId) newErrors.userId = "Debes seleccionar un empleado.";
+    if (!type) newErrors.type = "El motivo de la ausencia es obligatorio.";
+    if (!dateRange.start || !dateRange.end) {
+      newErrors.dateRange = "Debes seleccionar el rango de fechas completo.";
+    } else if (dateRange.start > dateRange.end) {
+      newErrors.dateRange =
+        "La fecha de fin no puede ser menor a la de inicio.";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0; // Retorna true si no hay errores
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userId) {
-      alert("Debes seleccionar un empleado.");
-      return;
-    }
-    if (startDate > endDate) {
-      alert("La fecha de fin no puede ser menor a la de inicio.");
+
+    // Ejecutamos validación local antes de tocar la base de datos
+    if (!validateForm()) {
+      // Reemplazo del alert() genérico
+      console.error("Faltan campos obligatorios");
+      toast.error("Por favor, revisa los campos en rojo.");
       return;
     }
 
@@ -59,17 +86,20 @@ export default function AbsenceForm({
         id: initialData?.id,
         userId,
         type,
-        startDate,
-        endDate,
+        startDate: dateRange.start, // Desestructuramos el rango para mandarlo como espera tu backend
+        endDate: dateRange.end,
         notes,
       });
+    } catch (error) {
+      console.error("Error al guardar el permiso:", error);
+      toast.error("Hubo un error al guardar el permiso.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6" noValidate>
       <div className="space-y-4">
         <h4 className="font-semibold text-sm text-slate-800 flex items-center gap-2 uppercase tracking-wider mb-2">
           <div className="bg-rose-50 p-1.5 rounded-md">
@@ -79,77 +109,68 @@ export default function AbsenceForm({
         </h4>
 
         <div className="grid grid-cols-1 gap-5">
+          {/* EMPLEADO */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Empleado
+              Empleado <span className="text-rose-500">*</span>
             </label>
-            <select
+            <CustomSelect
               value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              required
+              isSearchable
+              onChange={(val) => {
+                setUserId(val as string);
+                if (errors.userId) setErrors({ ...errors, userId: "" }); // Limpia el error al escribir
+              }}
               disabled={isEditing}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light bg-white disabled:bg-slate-50"
-            >
-              <option value="">-- Seleccionar Empleado --</option>
-              {employees
+              options={employees
                 .filter((e) => e.isActive !== false)
-                .map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.fullName}
-                  </option>
-                ))}
-            </select>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                Desde
-              </label>
-              <input
-                type="date"
-                required
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-light"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                Hasta
-              </label>
-              <input
-                type="date"
-                required
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-light"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Motivo / Tipo
-            </label>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value as AbsenceType)}
+                .map((emp) => ({ value: emp.id, label: emp.fullName }))}
+              placeholder="-- Seleccionar Empleado --"
               required
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light bg-white"
-            >
-              {ABSENCE_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
+              error={errors.userId}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* RANGO DE FECHAS (UNIFICADO) */}
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                Fechas de Ausencia <span className="text-rose-500">*</span>
+              </label>
+              <CustomDatePicker
+                mode="range"
+                value={dateRange}
+                onChange={(val) => {
+                  setDateRange(val as DateRange);
+                  if (errors.dateRange) setErrors({ ...errors, dateRange: "" });
+                }}
+                placeholder="Inicio - Fin"
+                required
+                error={errors.dateRange}
+              />
+            </div>
+
+            {/* TIPO DE AUSENCIA */}
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1.5">
+                Motivo / Tipo <span className="text-rose-500">*</span>
+              </label>
+              <CustomSelect
+                value={type}
+                onChange={(val) => {
+                  setType(val as AbsenceType);
+                  if (errors.type) setErrors({ ...errors, type: "" });
+                }}
+                placeholder="-- Seleccionar Tipo --"
+                options={absenceTypes}
+                required
+                error={errors.type}
+              />
+            </div>
           </div>
         </div>
       </div>
-
       <div className="border-t border-slate-100"></div>
-
       <div className="space-y-4">
         <h4 className="font-semibold text-sm text-slate-800 flex items-center gap-2 uppercase tracking-wider mb-2">
           <div className="bg-blue-50 p-1.5 rounded-md">
@@ -167,7 +188,6 @@ export default function AbsenceForm({
           />
         </div>
       </div>
-
       <div className="pt-2 flex items-center justify-end gap-3 border-t border-slate-100">
         <button
           type="button"

@@ -7,6 +7,7 @@ import {
   Calendar,
   Phone,
 } from "lucide-react";
+import { toast } from "react-hot-toast";
 import {
   SCHOOL_DEPARTMENTS,
   SCHOOL_POSITIONS,
@@ -14,6 +15,7 @@ import {
 import type { User } from "../../../domain/models/User";
 import type { Shift } from "../../../domain/models/Shift";
 import CustomSelect from "../ui/CustomSelect";
+import CustomDatePicker from "../ui/CustomDatePicker";
 import { stringsToSelectOptions } from "../../../utils/helpers";
 
 export interface EmployeeFormData {
@@ -21,7 +23,7 @@ export interface EmployeeFormData {
   empNo?: string;
   fullName: string;
   email: string;
-  phone: string; // <--- NUEVO CAMPO
+  phone: string;
   department: string;
   position: string;
   selectedShiftId: string;
@@ -47,10 +49,9 @@ export default function EmployeeForm({
   const [empNo] = useState(initialData?.employeeNumber || "");
   const [fullName, setFullName] = useState(initialData?.fullName || "");
   const [email, setEmail] = useState(initialData?.email || "");
-  const [phone, setPhone] = useState(initialData?.phone || ""); // <--- NUEVO ESTADO
+  const [phone, setPhone] = useState(initialData?.phone || "");
   const [department, setDepartment] = useState(initialData?.department || "");
   const [position, setPosition] = useState(initialData?.position || "");
-
   const [selectedShiftId, setSelectedShiftId] = useState(
     initialData?.shiftId || "",
   );
@@ -58,12 +59,36 @@ export default function EmployeeForm({
     new Date().toLocaleDateString("en-CA"),
   );
 
+  // 🌟 ESTADO DE ERRORES
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
   const schoolDepartments = stringsToSelectOptions(SCHOOL_DEPARTMENTS);
   const schoolPositions = stringsToSelectOptions(SCHOOL_POSITIONS);
   const shiftOptions = shifts.map((s) => ({ value: s.id, label: s.name }));
 
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!fullName.trim()) newErrors.fullName = "El nombre es obligatorio.";
+    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email))
+      newErrors.email = "Ingresa un correo válido.";
+    if (!phone.trim() || phone.length < 10)
+      newErrors.phone = "Ingresa un teléfono válido de 10 dígitos.";
+    if (!department) newErrors.department = "Selecciona un área.";
+    if (!position) newErrors.position = "Selecciona un puesto.";
+    if (selectedShiftId && !validFrom)
+      newErrors.validFrom = "Indica desde cuándo aplica este turno.";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) {
+      toast.error("Por favor, revisa los campos marcados en rojo.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -82,8 +107,12 @@ export default function EmployeeForm({
     }
   };
 
+  const clearError = (field: string) => {
+    if (errors[field]) setErrors({ ...errors, [field]: "" });
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
+    <form onSubmit={handleSubmit} className="space-y-8" noValidate>
       {/* 1. Identificación */}
       <div className="space-y-4">
         <h4 className="font-semibold text-sm text-slate-800 flex items-center gap-2 uppercase tracking-wider mb-4">
@@ -95,15 +124,23 @@ export default function EmployeeForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Nombre Completo
+              Nombre Completo <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
               required
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light"
+              onChange={(e) => {
+                setFullName(e.target.value);
+                clearError("fullName");
+              }}
+              className={`w-full px-3 py-2 border rounded-lg outline-none text-sm font-light ${errors.fullName ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
             />
+            {errors.fullName && (
+              <p className="text-[11px] text-rose-500 mt-1 pl-1">
+                {errors.fullName}
+              </p>
+            )}
           </div>
 
           {isEditing && (
@@ -122,40 +159,53 @@ export default function EmployeeForm({
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Correo (Usuario)
+              Correo (Usuario) <span className="text-rose-500">*</span>
             </label>
             <input
               type="email"
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               disabled={isEditing}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-light disabled:bg-slate-50 disabled:text-slate-400"
+              value={email}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearError("email");
+              }}
+              className={`w-full px-3 py-2 border rounded-lg outline-none text-sm font-light disabled:bg-slate-50 disabled:text-slate-400 ${errors.email ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
             />
+            {errors.email && (
+              <p className="text-[11px] text-rose-500 mt-1 pl-1">
+                {errors.email}
+              </p>
+            )}
           </div>
 
-          {/* NUEVO CAMPO DE TELÉFONO */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Teléfono (WhatsApp)
+              Teléfono (WhatsApp) <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <Phone
                 size={16}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
+                className={`absolute left-3 top-1/2 -translate-y-1/2 ${errors.phone ? "text-rose-400" : "text-slate-400"}`}
               />
               <input
                 type="tel"
                 required
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  clearError("phone");
+                }}
                 placeholder="10 dígitos"
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light"
+                className={`w-full pl-9 pr-3 py-2 border rounded-lg outline-none text-sm font-light ${errors.phone ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
               />
             </div>
+            {errors.phone && (
+              <p className="text-[11px] text-rose-500 mt-1 pl-1">
+                {errors.phone}
+              </p>
+            )}
           </div>
-
-          {/* ¡CONTRASEÑA ELIMINADA DE AQUÍ! */}
         </div>
       </div>
 
@@ -172,26 +222,36 @@ export default function EmployeeForm({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Puesto / Rol
+              Puesto / Rol <span className="text-rose-500">*</span>
             </label>
             <CustomSelect
               value={position}
-              onChange={(val) => setPosition(val as string)}
+              onChange={(val) => {
+                setPosition(val as string);
+                clearError("position");
+              }}
               placeholder="-- Seleccionar Puesto --"
               options={schoolPositions}
               isSearchable
+              required
+              error={errors.position}
             />
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Área / Nivel
+              Área / Nivel <span className="text-rose-500">*</span>
             </label>
             <CustomSelect
               value={department}
-              onChange={(val) => setDepartment(val as string)}
+              onChange={(val) => {
+                setDepartment(val as string);
+                clearError("department");
+              }}
               placeholder="-- Seleccionar Área --"
               options={schoolDepartments}
               isSearchable
+              required
+              error={errors.department}
             />
           </div>
         </div>
@@ -226,18 +286,20 @@ export default function EmployeeForm({
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
               Válido Desde
             </label>
-            <input
-              type="date"
+            <CustomDatePicker
+              mode="single"
               value={validFrom}
-              onChange={(e) => setValidFrom(e.target.value)}
+              onChange={(val) => {
+                setValidFrom(val as string);
+                clearError("validFrom");
+              }}
               disabled={!selectedShiftId}
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-light disabled:bg-slate-100 disabled:text-slate-400"
+              error={errors.validFrom}
             />
           </div>
         </div>
       </div>
 
-      {/* Botones */}
       <div className="pt-2 flex items-center justify-end gap-3">
         <button
           type="button"

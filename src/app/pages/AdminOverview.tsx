@@ -284,7 +284,6 @@ export default function AdminOverview() {
       <AdminPageHeader
         title="Resumen Global"
         description="Monitoreo de asistencia y rendimiento en tiempo real."
-        // 🌟 AQUÍ MANDAMOS LOS CONTROLES AL TECHO
         singleDate={selectedDate}
         onSingleDateChange={(val) => {
           setIsLoading(true);

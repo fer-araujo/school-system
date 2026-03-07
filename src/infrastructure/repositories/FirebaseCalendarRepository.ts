@@ -1,4 +1,4 @@
-import type { Holiday, HolidayType } from "../../domain/models/Holiday";
+import type { Holiday } from "../../domain/models/Holiday";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 import { db } from "../firebase/config";
 import {
@@ -27,11 +27,13 @@ export class FirebaseCalendarRepository implements CalendarRepository {
 
     // Mapeo estricto para cumplir con TypeScript
     return {
-      date: snap.id,
-      reason: data.reason || "Día de asueto",
-      type: (data.type as HolidayType) || "CUSTOM",
+      id: snap.id, // Agregamos el id (si lo requiere tu interfaz)
+      date: data.date || snap.id,
+      name: data.name || data.reason || "Día de asueto", // Cambiamos 'reason' por 'name' (dejamos data.reason por si hay datos viejos en BD)
+      type: data.type || "Oficial (Ley)", // Actualizamos el fallback al tipo que usas ahora
     };
   }
+
   async saveHoliday(holiday: Holiday): Promise<void> {
     const docRef = doc(db, "calendar", holiday.date);
     await setDoc(docRef, holiday); // Firebase creará la colección si no existe

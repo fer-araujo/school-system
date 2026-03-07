@@ -10,11 +10,14 @@ export interface SelectOption {
 interface CustomSelectProps {
   options: SelectOption[];
   value: string | string[]; // String para normal, Array para multi
-  onChange: (val: unknown) => void;
+  onChange: (val: string | string[]) => void;
   placeholder?: string;
   isMulti?: boolean;
   isSearchable?: boolean;
   disabled?: boolean;
+  required?: boolean;
+  error?: string;
+  name?: string;
 }
 
 export default function CustomSelect({
@@ -25,6 +28,9 @@ export default function CustomSelect({
   isMulti = false,
   isSearchable = false,
   disabled = false,
+  required = false,
+  error,
+  name,
 }: CustomSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -98,7 +104,6 @@ export default function CustomSelect({
     opt.label.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // Renderizado del valor seleccionado en el gatillo
   const renderValue = () => {
     if (isMulti && Array.isArray(value)) {
       if (value.length === 0)
@@ -134,8 +139,31 @@ export default function CustomSelect({
     );
   };
 
+  // Valor plano para el input nativo
+  const getInputValue = () => {
+    if (!value) return "";
+    return Array.isArray(value) ? value.join(",") : value;
+  };
+
   return (
-    <>
+    <div className="w-full relative">
+      {/* 🌟 INPUT INVISIBLE PARA EL REQUIRED */}
+      <input
+        type="text"
+        name={name}
+        required={required}
+        value={getInputValue()}
+        onChange={() => {}}
+        onFocus={() => {
+          if (!disabled) {
+            if (!isOpen) updatePosition();
+            setIsOpen(true);
+          }
+        }}
+        className="opacity-0 absolute inset-0 w-full h-full -z-10 pointer-events-none"
+        tabIndex={-1}
+      />
+
       <div
         ref={triggerRef}
         onClick={(e) => {
@@ -146,11 +174,17 @@ export default function CustomSelect({
           }
           setIsOpen(!isOpen);
         }}
-        className={`relative flex items-center justify-between w-full bg-white border rounded-lg px-3 py-1.5 transition-all ${
+        className={`relative flex items-center justify-between w-full bg-white border rounded-lg px-3 py-1.5 transition-all select-none ${
           disabled
             ? "bg-slate-50 opacity-60 cursor-not-allowed border-slate-200"
-            : "cursor-pointer hover:border-slate-300"
-        } ${isOpen ? "border-blue-500 ring-2 ring-blue-500/20" : "border-slate-200"}`}
+            : "cursor-pointer"
+        } ${
+          error
+            ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10"
+            : isOpen
+              ? "border-blue-500 ring-2 ring-blue-500/20"
+              : "border-slate-200 hover:border-slate-300"
+        }`}
       >
         <div className="flex-1 truncate pr-4">{renderValue()}</div>
         <ChevronDown
@@ -158,6 +192,12 @@ export default function CustomSelect({
           className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
         />
       </div>
+
+      {error && (
+        <p className="text-[11px] text-rose-500 mt-1 font-medium pl-1">
+          {error}
+        </p>
+      )}
 
       {isOpen &&
         createPortal(
@@ -189,7 +229,6 @@ export default function CustomSelect({
               </div>
             )}
 
-            {/* AQUI ESTÁ EL SCROLL BONITO (max-h-60 y overflow-y-auto) */}
             <div className="max-h-60 overflow-y-auto p-1 custom-scrollbar">
               {filteredOptions.length === 0 ? (
                 <div className="p-3 text-center text-sm text-slate-400">
@@ -222,6 +261,6 @@ export default function CustomSelect({
           </div>,
           document.body,
         )}
-    </>
+    </div>
   );
 }

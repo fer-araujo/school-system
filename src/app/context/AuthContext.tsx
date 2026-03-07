@@ -1,6 +1,8 @@
-import { createContext, useContext, useEffect, useState } from 'react';
-import { FirebaseAuthRepository } from '../../infrastructure/repositories/FirebaseAuthRepository';
-import type { User } from '../../domain/models/User';
+import { createContext, useContext, useEffect, useState } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { FirebaseAuthRepository } from "../../infrastructure/repositories/FirebaseAuthRepository";
+import type { User } from "../../domain/models/User";
+import { auth } from "../../infrastructure/firebase/config";
 
 interface AuthContextType {
   user: User | null;
@@ -17,11 +19,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Verificar si hay sesión activa al cargar
-    authRepo.getCurrentUser().then(u => {
-      setUser(u);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Ya sabemos que la sesión existe en Firebase, ahora traemos tus datos (rol, nombre, etc)
+        try {
+          const u = await authRepo.getCurrentUser();
+          setUser(u);
+        } catch (error) {
+          console.error("Error al obtener datos del usuario:", error);
+          setUser(null);
+        }
+      } else {
+        // Definitivamente no hay sesión activa
+        setUser(null);
+      }
+
+      // Bajamos la bandera de loading HASTA QUE Firebase nos dio una respuesta definitiva
       setLoading(false);
     });
+
+    // Limpiamos el listener cuando el componente se desmonta
+    return () => unsubscribe();
   }, []);
 
   const login = async (email: string, pass: string) => {

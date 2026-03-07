@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { Loader2, Calendar } from "lucide-react";
+import { toast } from "react-hot-toast";
 import type { Holiday, HolidayType } from "../../../domain/models/Holiday";
+import { stringsToSelectOptions } from "../../../utils/helpers";
+import CustomSelect from "../ui/CustomSelect";
+import CustomDatePicker from "../ui/CustomDatePicker";
 
 export type HolidayFormData = Omit<Holiday, "id"> & { id?: string };
 
@@ -11,6 +15,7 @@ interface HolidayFormProps {
 }
 
 const HOLIDAY_TYPES: HolidayType[] = ["Oficial (Ley)", "Interno (Escolar)"];
+const holidayTypes = stringsToSelectOptions(HOLIDAY_TYPES);
 
 export default function HolidayForm({
   initialData,
@@ -21,21 +26,40 @@ export default function HolidayForm({
   const isEditing = !!initialData;
 
   const [name, setName] = useState(initialData?.name || "");
-  const [date, setDate] = useState(
-    initialData?.date || new Date().toLocaleDateString("en-CA"),
-  );
+  const [date, setDate] = useState(initialData?.date || "");
   const [type, setType] = useState<HolidayType>(
     initialData?.type || "Oficial (Ley)",
   );
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!name.trim()) newErrors.name = "El motivo es obligatorio.";
+    if (!date) newErrors.date = "La fecha es obligatoria.";
+    if (!type) newErrors.type = "El tipo es obligatorio.";
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateForm()) {
+      toast.error("Revisa los campos requeridos.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await onSubmit({ id: initialData?.id, name, date, type });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const clearError = (field: string) => {
+    if (errors[field]) setErrors({ ...errors, [field]: "" });
   };
 
   return (
@@ -51,47 +75,57 @@ export default function HolidayForm({
         <div className="grid grid-cols-1 gap-5">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Motivo / Nombre
+              Motivo / Nombre <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
               required
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                clearError("name");
+              }}
               placeholder="Ej. Día de la Independencia"
-              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light"
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-1 outline-none text-sm font-light ${errors.name ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-blue-500"}`}
             />
+            {errors.name && (
+              <p className="text-[11px] text-rose-500 mt-1 pl-1">
+                {errors.name}
+              </p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                Fecha
+                Fecha <span className="text-rose-500">*</span>
               </label>
-              <input
-                type="date"
-                required
+              <CustomDatePicker
+                mode="single"
                 value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-light"
+                onChange={(val) => {
+                  setDate(val as string);
+                  clearError("date");
+                }}
+                required
+                error={errors.date}
               />
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                Tipo de Asueto
+                Tipo de Asueto <span className="text-rose-500">*</span>
               </label>
-              <select
+              <CustomSelect
                 value={type}
-                onChange={(e) => setType(e.target.value as HolidayType)}
+                onChange={(val) => {
+                  setType(val as HolidayType);
+                  clearError("type");
+                }}
+                placeholder="-- Seleccionar --"
+                options={holidayTypes}
                 required
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light bg-white"
-              >
-                {HOLIDAY_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
+                error={errors.type}
+              />
             </div>
           </div>
         </div>
