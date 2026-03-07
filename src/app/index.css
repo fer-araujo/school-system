@@ -2,13 +2,24 @@
 
 /* Aquí definimos nuestras variables de diseño con Tailwind v4 */
 @theme {
-  --color-school-primary: #1e40af;   /* Azul escolar */
+  --color-school-primary: #1e40af; /* Azul escolar */
   --color-school-secondary: #0f172a; /* Oscuro para textos */
-  --color-school-accent: #10b981;    /* Verde para asistencias correctas */
+  --color-school-accent: #10b981; /* Verde para asistencias correctas */
 }
 
 /* Estilos base */
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* slate-300 */
+  border-radius: 10px;
 }

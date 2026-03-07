@@ -38,10 +38,8 @@ export default function HolidaysPage() {
   const handleFormSubmit = async (formData: HolidayFormData) => {
     try {
       if (holidayToEdit && formData.id) {
-        // MODO EDICIÓN
         await manageHolidays.updateHoliday(formData as Holiday);
       } else {
-        // MODO CREACIÓN: Armamos el objeto explícitamente sin extraer el ID
         await manageHolidays.createHoliday({
           name: formData.name,
           date: formData.date,
@@ -55,6 +53,7 @@ export default function HolidaysPage() {
       alert("Hubo un error al guardar el día festivo.");
     }
   };
+
   const handleDelete = async (id: string) => {
     if (!window.confirm("¿Estás seguro de eliminar esta fecha del calendario?"))
       return;
@@ -70,6 +69,8 @@ export default function HolidaysPage() {
   const columns: ColumnDef<Holiday>[] = [
     {
       header: "Fecha",
+      sortable: true,
+      accessorKey: "date", // 🌟 ORDENABLE
       className: "pl-6",
       cell: (row) => (
         <span className="font-medium text-slate-800 bg-slate-100/80 px-2.5 py-1 rounded-md border border-slate-200/50">
@@ -79,12 +80,16 @@ export default function HolidaysPage() {
     },
     {
       header: "Motivo del Asueto",
+      sortable: true,
+      accessorKey: "name", // 🌟 ORDENABLE
       cell: (row) => (
         <span className="font-semibold text-slate-700">{row.name}</span>
       ),
     },
     {
       header: "Tipo",
+      sortable: true,
+      accessorKey: "type", // 🌟 ORDENABLE
       cell: (row) => {
         const isOfficial = row.type === "Oficial (Ley)";
         return (

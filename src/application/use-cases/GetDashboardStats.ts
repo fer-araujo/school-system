@@ -47,8 +47,15 @@ export class GetDashboardStats {
       let maxDeadline = -1;
 
       const now = new Date();
-      const todayStr = now.toLocaleDateString("en-CA");
+      // Ajuste de zona horaria para obtener la fecha local correcta
+      const offsetMs = now.getTimezoneOffset() * 60000;
+      const localNow = new Date(now.getTime() - offsetMs);
+      const todayStr = localNow.toISOString().split("T")[0];
+
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+      // 🌟 LÓGICA DE VIAJE EN EL TIEMPO: ¿Estamos revisando un día en el pasado?
+      const isPastDate = targetDate < todayStr;
 
       const fullTableData: DashboardTableRecord[] = [];
 
@@ -101,8 +108,6 @@ export class GetDashboardStats {
                 (a) => a.userId === worker.id,
               );
               if (attendanceRecord) {
-                // 🚨 CORRECCIÓN: Si vino, pero tiene bloques marcados como 'isAbsent' en Firebase,
-                // sumamos esas faltas parciales al contador de la tarjeta roja.
                 const faltasPrevias = attendanceRecord.periods.filter(
                   (p) => p.isAbsent,
                 ).length;
@@ -114,12 +119,14 @@ export class GetDashboardStats {
                 });
               }
             }
-            // 4. No vino en absoluto. ¿Ya se le hizo tarde?
-            else if (targetDate === todayStr && currentMinutes > deadline) {
+            // 4. No vino en absoluto. ¿Ya se le hizo tarde (HOY) o el día ya pasó (AYER)?
+            // 🌟 CORRECCIÓN: Ahora evaluamos si es una fecha pasada OR (es hoy y ya pasó el tiempo límite)
+            else if (
+              isPastDate ||
+              (targetDate === todayStr && currentMinutes > deadline)
+            ) {
               faltasInjustificadas++;
 
-              // 🚨 CORRECCIÓN: Eliminamos el recordScan() para no marcarles "entradas" falsas.
-              // Solo construimos la falta de manera visual.
               fullTableData.push({
                 id: `${worker.id}_${targetDate}`,
                 userId: worker.id,
@@ -136,6 +143,8 @@ export class GetDashboardStats {
         }
       }
 
+      // Solo detenemos el Polling (refresco automático) si el día seleccionado NO es hoy,
+      // o si es hoy y ya pasó el límite máximo del último empleado.
       const isPollingNeeded =
         targetDate === todayStr && currentMinutes <= maxDeadline;
 

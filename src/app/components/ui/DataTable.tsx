@@ -1,9 +1,12 @@
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useMemo } from "react";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import renderSortIcon from "./SortIcon";
 
 export interface ColumnDef<T> {
   header: string | ReactNode;
   accessorKey?: keyof T;
+  sortable?: boolean;
+  sortAccessor?: (row: T) => string | number;
   cell?: (row: T) => ReactNode;
   className?: string;
 }
@@ -29,7 +32,50 @@ export default function DataTable<T>({
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(5);
 
-  const totalItems = data.length;
+  // --- ESTADOS DE ORDENAMIENTO (SORTING) ---
+  const [sortConfig, setSortConfig] = useState<{
+    columnIndex: number | null;
+    direction: "asc" | "desc" | null;
+  }>({ columnIndex: null, direction: null });
+
+  // --- LÓGICA DE ORDENAMIENTO ---
+  const handleSort = (index: number, col: ColumnDef<T>) => {
+    if (!col.sortable) return;
+
+    let direction: "asc" | "desc" | null = "asc";
+    if (sortConfig.columnIndex === index && sortConfig.direction === "asc") {
+      direction = "desc";
+    } else if (
+      sortConfig.columnIndex === index &&
+      sortConfig.direction === "desc"
+    ) {
+      direction = null; // Quita el ordenamiento al 3er clic
+    }
+
+    setSortConfig({ columnIndex: direction ? index : null, direction });
+  };
+
+  // --- ORDENAR LOS DATOS ANTES DE PAGINAR ---
+  const sortedData = useMemo(() => {
+    if (sortConfig.columnIndex === null || !sortConfig.direction) return data;
+
+    const col = columns[sortConfig.columnIndex];
+    const sortFn =
+      col.sortAccessor ||
+      ((row: T) => (col.accessorKey ? row[col.accessorKey] : ""));
+
+    return [...data].sort((a, b) => {
+      const aValue = sortFn(a) as string | number;
+      const bValue = sortFn(b) as string | number;
+
+      if (aValue < bValue) return sortConfig.direction === "asc" ? -1 : 1;
+      if (aValue > bValue) return sortConfig.direction === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [data, sortConfig, columns]);
+
+  // --- CÁLCULOS PAGINACIÓN ---
+  const totalItems = sortedData.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
 
   if (currentPage > totalPages) {
@@ -37,7 +83,7 @@ export default function DataTable<T>({
   }
 
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedData = data.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedData = sortedData.slice(startIndex, startIndex + itemsPerPage);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
@@ -52,16 +98,26 @@ export default function DataTable<T>({
         </div>
       ) : (
         <>
-          {/* CONTENEDOR CON SCROLL RESPONSIVO */}
           <div className="overflow-x-auto overflow-y-auto max-h-150">
-            {/* Se agrega min-w-[800px] para forzar el ancho mínimo y evitar que se aplaste en iPad/Móvil */}
             <table className="w-full text-left border-collapse relative min-w-200">
-              <thead className="bg-white/95 backdrop-blur-sm border-b border-slate-100 text-slate-400 text-xs font-medium uppercase tracking-wider sticky top-0 z-10 shadow-sm">
+              {/* ADIÓS UPPERCASE Y TEXT-XS. HOLA TEXT-SM Y FONT-SEMIBOLD */}
+              <thead className="bg-white/95 backdrop-blur-sm border-b border-slate-100 tracking-wide sticky top-0 z-10 shadow-sm">
                 <tr>
                   {columns.map((col, index) => (
-                    // whitespace-nowrap evita que los headers se partan en dos líneas
-                    <th key={index} className={`p-4 whitespace-nowrap ${col.className || ""}`}>
-                      {col.header}
+                    <th
+                      key={index}
+                      className={`p-4 whitespace-nowrap ${col.className || ""} capitalize font-semibold text-sm text-slate-700/80`}
+                    >
+                      {col.sortable ? (
+                        <button
+                          onClick={() => handleSort(index, col)}
+                          className="flex items-center gap-1.5 hover:text-slate-800 group transition-colors cursor-pointer focus:outline-none"
+                        >
+                          {col.header} {renderSortIcon(index, sortConfig)}
+                        </button>
+                      ) : (
+                        col.header
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -75,7 +131,6 @@ export default function DataTable<T>({
                     {columns.map((col, colIndex) => (
                       <td
                         key={colIndex}
-                        // whitespace-nowrap evita que el contenido de las celdas se aplaste
                         className={`p-4 align-middle whitespace-nowrap ${col.className || ""}`}
                       >
                         {col.cell
@@ -91,8 +146,8 @@ export default function DataTable<T>({
             </table>
           </div>
 
-          {/* CONTROLES DE PAGINACIÓN (FOOTER) */}
           <div className="border-t border-slate-100 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-50/50">
+            {/* Controles de paginación (Mantenidos igual) */}
             <div className="flex items-center gap-2 text-sm text-slate-500">
               <span>Mostrar</span>
               <select
@@ -113,9 +168,13 @@ export default function DataTable<T>({
 
             <div className="flex items-center gap-4">
               <span className="text-sm text-slate-500">
-                Página <span className="font-medium text-slate-700">{currentPage}</span> de <span className="font-medium text-slate-700">{totalPages}</span>
+                Página{" "}
+                <span className="font-medium text-slate-700">
+                  {currentPage}
+                </span>{" "}
+                de{" "}
+                <span className="font-medium text-slate-700">{totalPages}</span>
               </span>
-
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -125,7 +184,9 @@ export default function DataTable<T>({
                   <ChevronLeft size={18} />
                 </button>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() =>
+                    setCurrentPage((p) => Math.min(totalPages, p + 1))
+                  }
                   disabled={currentPage === totalPages}
                   className="p-1.5 rounded-md border border-slate-200 text-slate-500 hover:bg-slate-100 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
                 >

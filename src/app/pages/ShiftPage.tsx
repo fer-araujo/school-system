@@ -11,7 +11,6 @@ import ShiftForm, { type ShiftFormData } from "../components/admin/ShiftForm";
 import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
 
-// Inicializamos el caso de uso
 const shiftRepo = new FirebaseShiftRepository();
 const manageShifts = new ManageShifts(shiftRepo);
 
@@ -81,11 +80,12 @@ export default function ShiftsPage() {
     }
   };
 
-  // Configuración de nuestro DataGrid reutilizable
   const columns: ColumnDef<Shift>[] = [
     {
       header: "Nombre del Turno",
-      className: "font-medium text-slate-800 pl-6",
+      sortable: true,
+      accessorKey: "name", // 🌟 ORDENABLE
+      className: "font-medium text-slate-800 pl-6 w-[25%]",
       cell: (row) => (
         <div className="flex items-center gap-3">
           <div className="bg-blue-50/50 text-blue-600 p-2.5 rounded-xl border border-blue-100/50 shadow-sm">
@@ -97,10 +97,10 @@ export default function ShiftsPage() {
     },
     {
       header: "Bloques de Horario",
+      className: "w-[20%]", // No es muy útil ordenarlo, pero le damos espacio
       cell: (row) => (
         <div className="flex flex-col gap-2">
           {row.blocks.map((block, index) => (
-            // 1. EL NUEVO DISEÑO DE BLOQUE (Una sola pastilla suave con flecha)
             <div
               key={index}
               className="inline-flex items-center w-max gap-2.5 px-3 py-1.5 rounded-lg bg-indigo-50/70 text-indigo-700 border border-indigo-100/50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
@@ -123,8 +123,8 @@ export default function ShiftsPage() {
     },
     {
       header: "Días Laborables",
+      className: "w-[25%]", // Tampoco es ideal para ordernar numéricamente
       cell: (row) => (
-        // 2. EL NUEVO DISEÑO DE DÍAS (Calendario semanal fijo)
         <div className="flex items-center gap-1.5">
           {WEEK_DAYS.map((day) => {
             const isActive = row.workDays.includes(day.id);
@@ -147,6 +147,9 @@ export default function ShiftsPage() {
     },
     {
       header: "Tolerancia",
+      sortable: true,
+      accessorKey: "toleranceMinutes", // 🌟 ORDENABLE
+      className: "w-[15%]",
       cell: (row) => (
         <span className="inline-flex items-center text-xs font-medium text-slate-600 bg-slate-200/70 px-2.5 py-1.5 rounded-lg border border-slate-200/50">
           {row.toleranceMinutes} min
@@ -155,7 +158,7 @@ export default function ShiftsPage() {
     },
     {
       header: "",
-      className: "pr-6 text-right w-16",
+      className: "pr-6 text-right w-[5%]",
       cell: (row) => {
         const menuItems: ActionMenuItem[] = [
           {
@@ -177,7 +180,6 @@ export default function ShiftsPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
-      {/* HEADER */}
       <AdminPageHeader
         title="Turnos y Horarios"
         description="Catálogo de horarios laborales para asignación de personal."
@@ -186,7 +188,6 @@ export default function ShiftsPage() {
         onAction={handleOpenCreateModal}
       />
 
-      {/* DATAGRID REUTILIZABLE */}
       <DataTable
         columns={columns}
         data={shifts}
@@ -195,7 +196,6 @@ export default function ShiftsPage() {
         emptyText="No hay turnos configurados. Crea uno para comenzar."
       />
 
-      {/* MODAL REUTILIZABLE */}
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

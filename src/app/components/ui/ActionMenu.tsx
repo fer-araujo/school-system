@@ -1,4 +1,10 @@
-import { useState, useRef, useEffect, type ReactNode } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal } from "lucide-react";
 
@@ -19,22 +25,20 @@ export default function ActionMenu({ items }: ActionMenuProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
 
-  // Calculamos la posición exacta del botón en la pantalla para pegar ahí el menú
-  const updatePosition = () => {
+  // 1. Envolvemos la función en useCallback para poder usarla de forma segura en useEffect y onClick
+  const updatePosition = useCallback(() => {
     if (buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setCoords({
-        top: rect.bottom + window.scrollY + 4, // 4px de separación hacia abajo
-        left: rect.right + window.scrollX - 192, // 192px es el equivalente a w-48
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.right + window.scrollX - 192,
       });
     }
-  };
+  }, []);
 
-  // Escuchamos el scroll y resize para que el menú no se quede flotando si el usuario mueve la tabla
+  // 2. Mantenemos el escuchador para que siga al botón si haces scroll, pero cerramos si scrollean mucho
   useEffect(() => {
     if (isOpen) {
-      updatePosition();
-      // El 'true' al final atrapa el scroll interno de la tabla
       window.addEventListener("scroll", updatePosition, true);
       window.addEventListener("resize", updatePosition);
     }
@@ -42,9 +46,9 @@ export default function ActionMenu({ items }: ActionMenuProps) {
       window.removeEventListener("scroll", updatePosition, true);
       window.removeEventListener("resize", updatePosition);
     };
-  }, [isOpen]);
+  }, [isOpen, updatePosition]);
 
-  // Cerrar el menú al hacer clic fuera de él (considerando tanto el botón como el menú flotante)
+  // Cerrar el menú al hacer clic fuera
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -65,7 +69,11 @@ export default function ActionMenu({ items }: ActionMenuProps) {
       <button
         ref={buttonRef}
         onClick={(e) => {
-          e.stopPropagation(); // Evita clics fantasma en la fila de la tabla
+          e.stopPropagation();
+          // 🚨 LA CLAVE: Calculamos la posición ANTES de que nazca el menú
+          if (!isOpen) {
+            updatePosition();
+          }
           setIsOpen(!isOpen);
         }}
         className="p-1.5 text-slate-400 cursor-pointer hover:text-slate-700 bg-transparent hover:bg-slate-100 rounded-lg transition-colors focus:outline-none"
@@ -74,18 +82,18 @@ export default function ActionMenu({ items }: ActionMenuProps) {
         <MoreHorizontal size={18} />
       </button>
 
-      {/* LA MAGIA DEL PORTAL: Sacamos el menú del DOM local y lo pegamos en el body */}
+      {/* LA MAGIA DEL PORTAL */}
       {isOpen &&
         createPortal(
           <div
             ref={dropdownRef}
             style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
-            className="absolute w-48 bg-white rounded-xl shadow-lg border border-slate-200 ring-1 ring-black/5 z-20 animate-in fade-in zoom-in-95 duration-100"
+            className="absolute w-48 bg-white rounded-xl shadow-lg border border-slate-200 ring-1 ring-black/5 z-50 animate-in fade-in zoom-in-95 origin-top-right duration-100"
           >
             <div className="py-1.5 p-1">
               {items.map((item, index) => {
                 const baseClasses =
-                  "w-full text-left flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer";
+                  "w-full text-left flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-colors cursor-pointer focus:outline-none";
                 const variantClasses =
                   item.variant === "danger"
                     ? "text-rose-600 hover:bg-rose-50"
@@ -98,8 +106,8 @@ export default function ActionMenu({ items }: ActionMenuProps) {
                     key={index}
                     onClick={(e) => {
                       e.stopPropagation();
+                      setIsOpen(false); // Cierra el menú al elegir una opción
                       item.onClick();
-                      setIsOpen(false);
                     }}
                     className={`${baseClasses} ${variantClasses}`}
                   >

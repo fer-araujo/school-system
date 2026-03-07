@@ -19,23 +19,20 @@ export default function Sidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   return (
+    // 🌟 AQUÍ ESTÁ LA MAGIA: sticky, top-0, h-screen
     <aside
-      className={`bg-slate-950 border-r border-slate-800 flex flex-col relative shrink-0 transition-all duration-300 ease-in-out z-20 ${
+      className={`bg-slate-950 border-r border-slate-800 flex flex-col sticky top-0 h-screen shrink-0 transition-all duration-300 ease-in-out z-30 ${
         isCollapsed ? "w-20" : "w-72"
       }`}
     >
-      {/* Glow effect sutil de fondo */}
       <div className="absolute top-0 left-0 w-full h-64 bg-blue-600/5 blur-[100px] pointer-events-none"></div>
 
-      {/* HEADER DEL SIDEBAR NUEVO Y FLUIDO */}
       <div
         className={`border-b border-slate-800/60 z-10 transition-all duration-300 flex flex-col ${isCollapsed ? "p-4 items-center" : "p-6"}`}
       >
-        {/* Fila superior: Logo y Botón */}
         <div
           className={`flex items-center w-full mb-6 ${isCollapsed ? "justify-center" : "justify-between"}`}
         >
-          {/* Logo y Nombre (Se ocultan completamente si está colapsado para evitar choques) */}
           {!isCollapsed && (
             <div className="flex items-center gap-3 overflow-hidden">
               <div className="w-10 h-10 shrink-0 rounded-xl bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
@@ -47,7 +44,6 @@ export default function Sidebar() {
             </div>
           )}
 
-          {/* EL BOTÓN (Se centra y se hace cuadrado si está colapsado) */}
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
             className={`text-slate-400 cursor-pointer hover:text-white hover:bg-slate-800 rounded-lg transition-all flex items-center justify-center shrink-0 ${isCollapsed ? "w-10 h-10 bg-slate-800/40 border border-slate-700/50 shadow-sm" : "p-1.5"}`}
@@ -61,7 +57,6 @@ export default function Sidebar() {
           </button>
         </div>
 
-        {/* Info del Usuario */}
         <div
           className={`bg-slate-900/50 rounded-xl border border-slate-800 flex items-center transition-all duration-300 ${isCollapsed ? "p-1.5 justify-center w-11 h-11" : "p-3 gap-3 w-full"}`}
         >
@@ -81,11 +76,9 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* NAVEGACIÓN */}
       <nav
         className={`flex-1 space-y-1.5 overflow-y-auto overflow-x-hidden z-10 transition-all duration-300 ${isCollapsed ? "p-3" : "p-4"}`}
       >
-        {/* CORRECCIÓN 1: Solo mostrar 'Personal' si el usuario NO es ADMIN */}
         {!isCollapsed && user?.role !== "ADMIN" && (
           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2 px-4 mt-2 transition-all">
             Personal
@@ -98,7 +91,7 @@ export default function Sidebar() {
             icon={LayoutDashboard}
             label="Mi Gafete"
             isCollapsed={isCollapsed}
-            end // <--- Propiedad opcional para match exacto
+            end
           />
         )}
 
@@ -110,9 +103,9 @@ export default function Sidebar() {
               </div>
             )}
 
-            {/* CORRECCIÓN 2: Le pasamos 'end' para que solo se ilumine en coincidencia exacta */}
+            {/* 🌟 CORRECCIÓN DE RUTA: "/admin/dashboard" en vez de "/admin" */}
             <NavItem
-              to="/admin"
+              to="/admin/dashboard"
               icon={LayoutDashboard}
               label="Resumen Global"
               isCollapsed={isCollapsed}
@@ -152,13 +145,12 @@ export default function Sidebar() {
         )}
       </nav>
 
-      {/* FOOTER - CERRAR SESIÓN */}
       <div
         className={`p-4 z-10 border-t border-slate-800/60 transition-all duration-300 ${isCollapsed ? "flex justify-center" : ""}`}
       >
         <button
           onClick={logout}
-          className={`flex items-center text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 transition-colors group font-medium rounded-xl ${
+          className={`flex items-center text-slate-400 hover:bg-rose-500/10 hover:text-rose-400 transition-colors group font-medium rounded-xl cursor-pointer ${
             isCollapsed ? "p-3 justify-center" : "w-full gap-3 px-4 py-3"
           }`}
           title={isCollapsed ? "Cerrar Sesión" : undefined}

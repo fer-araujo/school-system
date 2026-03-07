@@ -1,5 +1,9 @@
 // src/utils/ui-helpers.ts
 
+import type { SelectOption } from "../app/components/ui/CustomSelect";
+import type { DashboardTableRecord } from "../application/use-cases/GetDashboardStats";
+import type { WorkPeriod } from "../domain/models/User";
+
 /**
  * Genera clases de Tailwind consistentes (fondo, texto, borde)
  * basándose en el nombre del usuario (Hashing string).
@@ -47,4 +51,56 @@ export const handleShareCredentials = (
       `mailto:${data.email}?subject=Accesos&body=${encoded}`,
       "_blank",
     );
+};
+
+// --- FUNCIONES PURAS PARA CALCULAR (Útiles para el Sorting) ---
+export const calculateTotalMs = (periods: WorkPeriod[]) => {
+  let totalMs = 0;
+  const now = new Date();
+  periods.forEach((p) => {
+    if (p.isAbsent || !p.checkIn) return;
+    const end = p.checkOut ? p.checkOut.getTime() : now.getTime();
+    totalMs += end - p.checkIn.getTime();
+  });
+  return totalMs;
+};
+
+export const formatTime = (dateValue?: Date) => {
+  if (!dateValue) return "--:--";
+  return dateValue.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+export const formatTotalTime = (totalMs: number) => {
+  if (totalMs === 0) return "0h 0m";
+  const totalMins = Math.floor(totalMs / 60000);
+  const h = Math.floor(totalMins / 60);
+  const m = totalMins % 60;
+  return `${h}h ${m}m`;
+};
+
+export const getStatusPriority = (row: DashboardTableRecord) => {
+  if (row.isJustified) return 5;
+  const allAbsent =
+    row.periods.length > 0 &&
+    row.periods.every((p) => p.isAbsent || !p.checkIn);
+  const someAbsent = row.periods.some((p) => p.isAbsent || !p.checkIn);
+  const hasLate = row.periods.some((p) => p.isLate);
+
+  if (allAbsent) return 1;
+  if (someAbsent) return 2;
+  if (hasLate) return 3;
+  return 4;
+};
+
+/**
+ * Convierte un arreglo de strings simple en opciones compatibles con CustomSelect.
+ */
+export const stringsToSelectOptions = (items: string[]): SelectOption[] => {
+  return items.map((item) => ({
+    value: item,
+    label: item,
+  }));
 };

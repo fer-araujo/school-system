@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ManageAbsences } from "../../application/use-cases/ManageAbsence";
 import { ManageEmployees } from "../../application/use-cases/ManageEmployees";
 import type { Absence } from "../../domain/models/Absence";
@@ -22,6 +22,16 @@ export default function AbsencesPage() {
   const [employees, setEmployees] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
+  const today = new Date();
+  const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+    .toISOString()
+    .split("T")[0];
+  const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+    .toISOString()
+    .split("T")[0];
+
+  const [dateRange, setDateRange] = useState({ start: firstDay, end: lastDay });
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [absenceToEdit, setAbsenceToEdit] = useState<Absence | null>(null);
 
@@ -30,7 +40,7 @@ export default function AbsencesPage() {
     try {
       const [absData, empData] = await Promise.all([
         manageAbsences.getAllAbsences(),
-        manageEmployees.getAllWorkers(), // Usamos lo que ya teníamos
+        manageEmployees.getAllWorkers(),
       ]);
       setAbsences(absData);
       setEmployees(empData);
@@ -57,7 +67,6 @@ export default function AbsencesPage() {
   const handleFormSubmit = async (formData: AbsenceFormData) => {
     try {
       if (absenceToEdit && formData.id) {
-        // MODO EDICIÓN: Armamos el objeto perfecto
         const absenceToUpdate: Absence = {
           id: formData.id,
           userId: formData.userId,
@@ -69,7 +78,6 @@ export default function AbsencesPage() {
         };
         await manageAbsences.updateAbsence(absenceToUpdate);
       } else {
-        // MODO CREACIÓN: Armamos explícitamente el objeto sin extraer el ID para que el linter no llore
         await manageAbsences.createAbsence({
           userId: formData.userId,
           type: formData.type,
@@ -81,7 +89,6 @@ export default function AbsencesPage() {
       setIsModalOpen(false);
       await loadData();
     } catch (error) {
-      // AQUÍ USAMOS EL ERROR: Lo imprimimos para debug técnico
       console.error("Error al guardar permiso:", error);
       alert("Hubo un error al guardar el permiso.");
     }
@@ -93,16 +100,26 @@ export default function AbsencesPage() {
       await manageAbsences.deleteAbsence(id);
       await loadData();
     } catch (error) {
-      // AQUÍ TAMBIÉN USAMOS EL ERROR
       console.error("Error al eliminar permiso:", error);
       alert("Error al eliminar el permiso.");
     }
   };
 
+  // 🌟 Lógica para filtrar las ausencias por el mes seleccionado
+  const filteredAbsences = useMemo(() => {
+    if (!dateRange.start || !dateRange.end) return absences;
+    return absences.filter((abs) => {
+      // Verificamos que la fecha de inicio del permiso esté dentro del rango
+      return abs.startDate >= dateRange.start && abs.startDate <= dateRange.end;
+    });
+  }, [absences, dateRange]);
+
   const columns: ColumnDef<Absence>[] = [
     {
       header: "Empleado",
-      className: "pl-6",
+      sortable: true,
+      accessorKey: "employeeName", // 🌟 ORDENABLE
+      className: "pl-6 w-[25%]",
       cell: (row) => {
         const name = row.employeeName || "Desconocido";
         const colorClass = getAvatarColor(name);
@@ -120,6 +137,9 @@ export default function AbsencesPage() {
     },
     {
       header: "Fechas",
+      sortable: true,
+      accessorKey: "startDate", // 🌟 ORDENABLE
+      className: "w-[20%]",
       cell: (row) => (
         <div className="flex flex-col gap-0.5 text-xs">
           {row.startDate === row.endDate ? (
@@ -145,6 +165,9 @@ export default function AbsencesPage() {
     },
     {
       header: "Tipo",
+      sortable: true,
+      accessorKey: "type", // 🌟 ORDENABLE
+      className: "w-[20%]",
       cell: (row) => {
         const isBad = row.type === "Falta Injustificada";
         return (
@@ -159,7 +182,7 @@ export default function AbsencesPage() {
     },
     {
       header: "Notas / Justificación",
-      className: "max-w-[250px]",
+      className: "max-w-[250px]", // No ordenable
       cell: (row) => (
         <p className="text-xs text-slate-500 truncate" title={row.notes}>
           {row.notes || (
@@ -192,20 +215,23 @@ export default function AbsencesPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
+      {/* HEADER: Añadido el filtro de fecha */}
       <AdminPageHeader
         title="Permisos y Ausencias"
         description="Gestión de faltas, vacaciones y justificantes médicos."
         actionLabel="Registrar Ausencia"
         actionIcon={<Plus size={18} />}
         onAction={handleOpenCreateModal}
+        dateRange={dateRange}
+        onDateRangeChange={setDateRange}
       />
 
       <DataTable
         columns={columns}
-        data={absences}
+        data={filteredAbsences} // 🌟 PASAMOS LA DATA FILTRADA POR MES
         isLoading={isLoading}
         loadingText="Cargando historial..."
-        emptyText="No hay registros de ausencias."
+        emptyText="No hay registros de ausencias para el mes seleccionado."
       />
 
       <Modal

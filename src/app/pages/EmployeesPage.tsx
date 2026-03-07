@@ -33,6 +33,7 @@ import SelectionToolbar from "../components/ui/SelectionToolbar";
 import { getAvatarColor } from "../../utils/helpers";
 import { showRegistrationToast } from "../../utils/toastNotifications";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
+import Checkbox from "../components/ui/Checkbox";
 
 const manageEmployees = new ManageEmployees();
 const shiftRepo = new FirebaseShiftRepository();
@@ -139,9 +140,9 @@ export default function EmployeesPage() {
     });
   };
 
-  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelectAll = (checked: boolean) => {
     setSelectedUserIds(
-      e.target.checked ? processedEmployees.map((emp) => emp.id) : [],
+      checked ? processedEmployees.map((emp) => emp.id) : [],
     );
   };
 
@@ -326,20 +327,18 @@ export default function EmployeesPage() {
   const columns: ColumnDef<User>[] = [
     {
       header: (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={
             processedEmployees.length > 0 &&
             selectedUserIds.length === processedEmployees.length
           }
-          onChange={handleSelectAll}
+          onChange={(e) => handleSelectAll(e)}
           className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
         />
       ),
       className: "pl-6 w-12",
       cell: (row: User) => (
-        <input
-          type="checkbox"
+        <Checkbox
           checked={selectedUserIds.includes(row.id)}
           onChange={() => handleToggleUser(row.id)}
           className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
@@ -350,7 +349,7 @@ export default function EmployeesPage() {
       header: (
         <button
           onClick={() => handleSort("fullName")}
-          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors uppercase cursor-pointer"
+          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors cursor-pointer"
         >
           Empleado {renderSortIcon("fullName")}
         </button>
@@ -377,13 +376,12 @@ export default function EmployeesPage() {
     {
       header: "No. Emp.",
       accessorKey: "employeeNumber",
-      className: "font-mono text-xs text-slate-600",
     },
     {
       header: (
         <button
           onClick={() => handleSort("position")}
-          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors uppercase cursor-pointer"
+          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors cursor-pointer"
         >
           Puesto / Nivel {renderSortIcon("position")}
         </button>
@@ -403,7 +401,7 @@ export default function EmployeesPage() {
       header: (
         <button
           onClick={() => handleSort("shiftName")}
-          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors uppercase cursor-pointer"
+          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors cursor-pointer"
         >
           Turno Asignado {renderSortIcon("shiftName")}
         </button>
@@ -419,7 +417,7 @@ export default function EmployeesPage() {
       header: (
         <button
           onClick={() => handleSort("isActive")}
-          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors uppercase cursor-pointer"
+          className="flex items-center gap-1.5 hover:text-slate-700 group transition-colors cursor-pointer"
         >
           Estado {renderSortIcon("isActive")}
         </button>
@@ -481,7 +479,6 @@ export default function EmployeesPage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800 relative">
-
       <AdminPageHeader
         title="Gestión de Personal"
         description="Directorio de empleados, altas y asignación de turnos."

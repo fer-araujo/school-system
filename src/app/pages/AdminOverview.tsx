@@ -4,7 +4,6 @@ import {
   UserCheck,
   UserMinus,
   UserX,
-  Download,
   ArrowRight,
 } from "lucide-react";
 
@@ -22,10 +21,17 @@ import {
 import { ManageEmployees } from "../../application/use-cases/ManageEmployees";
 
 import type { ColumnDef } from "../components/ui/DataTable";
-import { getAvatarColor } from "../../utils/helpers";
+import {
+  calculateTotalMs,
+  formatTime,
+  formatTotalTime,
+  getAvatarColor,
+  getStatusPriority,
+} from "../../utils/helpers";
 import DataTable from "../components/ui/DataTable";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
 import type { WorkPeriod } from "../../domain/models/User";
+import { exportAdminOverviewToCSV } from "../../utils/CSVfunctions";
 
 const attendanceRepo = new FirebaseAttendanceRepository();
 const listenAttendancesUseCase = new ListenDailyAttendances(attendanceRepo);
@@ -101,35 +107,11 @@ export default function AdminOverview() {
     };
   }, [selectedDate, records]);
 
-  const formatTime = (dateValue?: Date) => {
-    if (!dateValue) return "--:--";
-    return dateValue.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const calculateTotalTime = (periods: WorkPeriod[]) => {
-    let totalMs = 0;
-    const now = new Date();
-
-    periods.forEach((p) => {
-      if (p.isAbsent || !p.checkIn) return;
-      const end = p.checkOut ? p.checkOut.getTime() : now.getTime();
-      totalMs += end - p.checkIn.getTime();
-    });
-
-    if (totalMs === 0) return "0h 0m";
-
-    const totalMins = Math.floor(totalMs / 60000);
-    const h = Math.floor(totalMins / 60);
-    const m = totalMins % 60;
-    return `${h}h ${m}m`;
-  };
-
   const columns: ColumnDef<DashboardTableRecord>[] = [
     {
-      header: "EMPLEADO",
+      header: "Empleado",
+      sortable: true,
+      accessorKey: "workerName",
       className: "pl-6 w-[25%]",
       cell: (row) => {
         const colorClass = getAvatarColor(row.workerName);
@@ -153,25 +135,25 @@ export default function AdminOverview() {
       },
     },
     {
-      header: "DEPARTAMENTO",
+      header: "Departamento",
+      sortable: true,
+      accessorKey: "department",
       className: "w-[12%]",
       cell: (row) => (
-        // CAMBIO: Indigo en lugar de Slate para contrastar con el Zebra
         <span className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100/60">
           {row.department || "Docencia"}
         </span>
       ),
     },
     {
-      header: "REGISTROS (ENTRADA ➔ SALIDA)",
+      header: "Registros (Entrada ➔ Salida)",
+      sortable: false, // No es linealmente ordenable
       className: "w-[26%]",
       cell: (row) => (
         <div className="flex flex-col gap-1.5 py-1">
           {row.periods.map((p: WorkPeriod, i) => {
             const isMissing = p.isAbsent || !p.checkIn;
-
             return (
-              // ADIÓS bg-white, border y shadow. Dejamos el contenedor limpio y transparente.
               <div
                 key={i}
                 className="flex items-center text-[12px] font-medium px-2 py-1 w-fit"
@@ -217,14 +199,20 @@ export default function AdminOverview() {
       ),
     },
     {
-      header: "TIEMPO TOTAL",
+      header: "Tiempo Total",
+      sortable: true,
+      sortAccessor: (row) => {
+        const hasAbsenceOnly = row.periods.every(
+          (p: WorkPeriod) => p.isAbsent || !p.checkIn,
+        );
+        return hasAbsenceOnly ? -1 : calculateTotalMs(row.periods); // Manda al fondo a los de --:--
+      },
       className: "w-[15%]",
       cell: (row) => {
         const hasAbsenceOnly = row.periods.every(
           (p: WorkPeriod) => p.isAbsent || !p.checkIn,
         );
         if (hasAbsenceOnly) {
-          // CAMBIO: Usamos text-zinc-400 como pediste, con un toque de opacidad
           return (
             <span className="text-zinc-400/80 text-[12px] font-bold tracking-widest">
               --:--
@@ -233,13 +221,15 @@ export default function AdminOverview() {
         }
         return (
           <span className="text-slate-600 text-[12px] font-medium">
-            {calculateTotalTime(row.periods)}
+            {formatTotalTime(calculateTotalMs(row.periods))}
           </span>
         );
       },
     },
     {
-      header: "ESTADO GENERAL",
+      header: "Estado General",
+      sortable: true,
+      sortAccessor: (row) => getStatusPriority(row), // Usa la prioridad (1, 2, 3...) para ordenar
       className: "w-[22%]",
       cell: (row) => {
         if (row.isJustified) {
@@ -258,27 +248,24 @@ export default function AdminOverview() {
         );
         const hasLate = row.periods.some((p: WorkPeriod) => p.isLate);
 
-        if (allAbsent) {
+        if (allAbsent)
           return (
             <span className="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-normal bg-rose-50 text-rose-600 border border-rose-100">
               Falta
             </span>
           );
-        }
-        if (someAbsent) {
+        if (someAbsent)
           return (
             <span className="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-normal bg-rose-50 text-rose-600 border border-rose-100">
               Falta Parcial
             </span>
           );
-        }
-        if (hasLate) {
+        if (hasLate)
           return (
             <span className="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-normal bg-orange-50 text-orange-600 border border-orange-200">
               Retardo
             </span>
           );
-        }
 
         return (
           <span className="inline-flex items-center px-2.5 py-1 rounded text-[11px] font-normal bg-emerald-50 text-emerald-600 border border-emerald-100">
@@ -297,6 +284,13 @@ export default function AdminOverview() {
       <AdminPageHeader
         title="Resumen Global"
         description="Monitoreo de asistencia y rendimiento en tiempo real."
+        // 🌟 AQUÍ MANDAMOS LOS CONTROLES AL TECHO
+        singleDate={selectedDate}
+        onSingleDateChange={(val) => {
+          setIsLoading(true);
+          setSelectedDate(val);
+        }}
+        onExportCSV={() => exportAdminOverviewToCSV(tableData, selectedDate)}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
@@ -404,24 +398,6 @@ export default function AdminOverview() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             Actividad en Vivo
           </h3>
-          <div className="flex items-center gap-3">
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => {
-                setIsLoading(true);
-                setSelectedDate(e.target.value);
-              }}
-              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-600 outline-none focus:ring-1 focus:ring-blue-500 hover:border-slate-300 transition-colors cursor-pointer"
-            />
-            <button
-              onClick={() => console.log("Descargar CSV")}
-              className="p-1.5 border border-slate-200 bg-white rounded-lg text-slate-500 hover:bg-slate-50 hover:text-slate-800 transition-colors cursor-pointer"
-              title="Exportar CSV"
-            >
-              <Download className="w-4 h-4" />
-            </button>
-          </div>
         </div>
 
         <DataTable
