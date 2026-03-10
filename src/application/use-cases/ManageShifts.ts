@@ -15,14 +15,14 @@ export class ManageShifts {
   // 1. Crear un nuevo turno (Molde)
   async createShift(data: Omit<Shift, "id">): Promise<void> {
     // BLINDAJE: Validamos los datos antes de hacer cualquier cosa
-    this.validateShiftData(data.name, data.blocks);
+    this.validateShiftData(data.name, data.blocksByDay);
 
     const shiftId = `shift_${Date.now()}`;
 
     const newShift: Shift = {
       id: shiftId,
       name: data.name,
-      blocks: data.blocks,
+      blocksByDay: data.blocksByDay,
       workDays: data.workDays,
       toleranceMinutes: data.toleranceMinutes,
     };
@@ -33,7 +33,7 @@ export class ManageShifts {
   // Editar un turno existente
   async updateShift(data: Shift): Promise<void> {
     // BLINDAJE: También validamos al momento de editar
-    this.validateShiftData(data.name, data.blocks);
+    this.validateShiftData(data.name, data.blocksByDay);
 
     await this.shiftRepo.saveShift(data);
   }
@@ -78,17 +78,19 @@ export class ManageShifts {
   }
 
   // Utilidad privada para no repetir código de validación
-  private validateShiftData(name: string, blocks: TimeBlock[]) {
+  private validateShiftData(name: string, blocksByDay: Record<string, TimeBlock[]>) {
     if (!name.trim()) throw new Error("El turno debe tener un nombre.");
-    if (blocks.length === 0)
+    if (Object.keys(blocksByDay).length === 0)
       throw new Error("El turno debe tener al menos un bloque de horario.");
-    blocks.forEach((b) => {
-      if (!b.start || !b.end)
-        throw new Error("Los bloques deben tener hora de inicio y fin.");
-      if (b.start >= b.end)
-        throw new Error(
-          `El bloque ${b.start}-${b.end} es inválido. La salida debe ser después.`,
-        );
+    Object.values(blocksByDay).forEach((blocks) => {
+      blocks.forEach((b) => {
+        if (!b.start || !b.end)
+          throw new Error("Los bloques deben tener hora de inicio y fin.");
+        if (b.start >= b.end)
+          throw new Error(
+            `El bloque ${b.start}-${b.end} es inválido. La salida debe ser después.`,
+          );
+      });
     });
   }
 }

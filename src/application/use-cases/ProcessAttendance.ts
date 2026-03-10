@@ -3,7 +3,6 @@ import type { AttendanceRepository } from "../../domain/repositories/AttendanceR
 import type { ShiftRepository } from "../../domain/repositories/ShiftRepository";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
-import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
 
 export class ProcessAttendanceScan {
   private employeeRepo: EmployeeRepository;
@@ -29,13 +28,10 @@ export class ProcessAttendanceScan {
     const rawInput = scannedData.trim();
     if (!rawInput) throw new Error("Gafete vacío o lectura incorrecta.");
 
-    // 1. BUSCAR AL EMPLEADO POR GAFETE (O por número si se teclea manual)
     let user = await this.employeeRepo.getWorkerByBadgeId(rawInput);
-    if (!user) {
+    if (!user)
       user = await this.employeeRepo.getWorkerByEmployeeNumber(rawInput);
-    }
 
-    // Soporte legacy por si alguien escanea el UID de sistema o el viejo JSON temporalmente
     if (!user) {
       try {
         const parsed = JSON.parse(rawInput);
@@ -45,56 +41,47 @@ export class ProcessAttendanceScan {
       }
     }
 
-    if (!user) throw new Error("Gafete no reconocido en el sistema.");
-    if (!user.isActive)
-      throw new Error("Acceso denegado: El empleado está dado de baja.");
+    if (!user) throw new Error("Gafete no reconocido.");
+    if (!user.isActive) throw new Error("Acceso denegado: Empleado de baja.");
 
-    // 2. FECHAS LOCALES
     const now = new Date();
     const offsetMs = now.getTimezoneOffset() * 60000;
     const localNow = new Date(now.getTime() - offsetMs);
     const todayStr = localNow.toISOString().split("T")[0];
     const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-    // 3. VALIDAR FESTIVOS Y PERMISOS
+    // Validaciones de calendario
     const holiday = await this.calendarRepo.getHolidayByDate(todayStr);
     if (holiday)
-      throw new Error(`Bloqueado: Hoy es día festivo (${holiday.name}).`);
+      throw new Error(`Bloqueado: Hoy es festivo (${holiday.name}).`);
 
     const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(
       user.id,
       todayStr,
     );
-    if (userAbsence) {
+    if (userAbsence)
       throw new Error(
-        `Acceso denegado: Tienes un permiso activo (${userAbsence.type}).`,
+        `Acceso denegado: Tienes un permiso (${userAbsence.type}).`,
       );
-    }
 
-    // 4. HISTORIAL DE HOY (Deducir Entrada o Salida)
+    // Deducir entrada/salida
     const todayAttendances =
       await this.attendanceRepo.getAttendancesByDate(todayStr);
     const myAttendance = todayAttendances.find((a) => a.userId === user!.id);
-
     let isEntryFallback = true;
     let periodIndex = 0;
 
-    if (myAttendance) {
-      const periods = myAttendance.periods || [];
-      periodIndex = periods.length;
-
-      if (periods.length > 0) {
-        const lastPeriod = periods[periods.length - 1];
-        if (!lastPeriod.checkOut) {
-          isEntryFallback = false; // Tiene entrada sin salida, toca salir.
-          periodIndex = periods.length - 1;
-        }
+    if (myAttendance?.periods && myAttendance.periods.length > 0) {
+      const lastPeriod = myAttendance.periods[myAttendance.periods.length - 1];
+      if (!lastPeriod.checkOut) {
+        isEntryFallback = false;
+        periodIndex = myAttendance.periods.length - 1;
+      } else {
+        periodIndex = myAttendance.periods.length;
       }
     }
 
     const finalType = isEntryFallback ? "ENTRY" : "EXIT";
-
-    // 5. CÁLCULO DE TURNOS, RETARDOS Y BLOQUES SALTADOS
     let isLate = false;
     let skippedBlocks = 0;
 
@@ -105,26 +92,35 @@ export class ProcessAttendanceScan {
       );
       const activeShiftId = assignment ? assignment.shiftId : user.shiftId;
 
-      if (!activeShiftId)
-        throw new Error("Acceso denegado: No tienes un turno asignado hoy.");
+      if (!activeShiftId) throw new Error("No tienes un turno asignado.");
 
       const shift = await this.shiftRepo.getShiftById(activeShiftId);
-      if (!shift || !shift.blocks || shift.blocks.length === 0) {
-        throw new Error(
-          "Acceso denegado: El turno está vacío o fue eliminado.",
-        );
+      if (!shift) throw new Error("El turno asignado no existe.");
+
+      // 🌟 LÓGICA DE DÍAS FLEXIBLES
+      const daysTranslation: Record<number, string> = {
+        0: "Domingo",
+        1: "Lunes",
+        2: "Martes",
+        3: "Miércoles",
+        4: "Jueves",
+        5: "Viernes",
+        6: "Sábado",
+      };
+      const todayName = daysTranslation[now.getDay()];
+
+      if (!shift.workDays.includes(todayName)) {
+        throw new Error(`Hoy (${todayName}) es tu día de descanso.`);
       }
 
-      const dateObj = new Date(todayStr + "T12:00:00");
-      const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
-
-      if (!shift.workDays.includes(targetDayId)) {
-        throw new Error("Acceso denegado: Hoy es tu día de descanso.");
-      }
+      // 🌟 OBTENER BLOQUES DE HOY
+      const blocks = shift.blocksByDay ? shift.blocksByDay[todayName] : [];
+      if (!blocks || blocks.length === 0)
+        throw new Error(`No hay horarios configurados para el ${todayName}.`);
 
       let targetBlockIndex = -1;
-      for (let i = 0; i < shift.blocks.length; i++) {
-        const [endHour, endMin] = shift.blocks[i].end.split(":").map(Number);
+      for (let i = 0; i < blocks.length; i++) {
+        const [endHour, endMin] = blocks[i].end.split(":").map(Number);
         if (currentMinutes <= endHour * 60 + endMin) {
           targetBlockIndex = i;
           break;
@@ -138,7 +134,7 @@ export class ProcessAttendanceScan {
           throw new Error("Desajuste de turnos. Contacta a administración.");
         }
 
-        const [startHour, startMin] = shift.blocks[targetBlockIndex].start
+        const [startHour, startMin] = blocks[targetBlockIndex].start
           .split(":")
           .map(Number);
         if (
@@ -148,14 +144,11 @@ export class ProcessAttendanceScan {
           isLate = true;
         }
       } else {
-        const lastBlock = shift.blocks[shift.blocks.length - 1];
-        throw new Error(
-          `Acceso denegado: Tu turno finalizó a las ${lastBlock.end}.`,
-        );
+        const lastBlock = blocks[blocks.length - 1];
+        throw new Error(`Tu turno finalizó a las ${lastBlock.end}.`);
       }
     }
 
-    // 6. GUARDAR EN BD
     await this.attendanceRepo.recordScan(
       user.id,
       user.employeeNumber || "0000",
@@ -166,9 +159,8 @@ export class ProcessAttendanceScan {
       skippedBlocks,
     );
 
-    // 7. RESPUESTA AL KIOSCO
     return {
-      employeeName: user.fullName || "Empleado",
+      employeeName: user.fullName,
       time: now.toLocaleTimeString("es-MX", {
         hour: "2-digit",
         minute: "2-digit",

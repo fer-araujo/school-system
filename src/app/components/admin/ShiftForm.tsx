@@ -41,13 +41,22 @@ export default function ShiftForm({
     ],
   );
 
-  const [blocks, setBlocks] = useState<TimeBlock[]>(
-    initialData?.blocks && initialData.blocks.length > 0
-      ? initialData.blocks
-      : [{ start: "08:00", end: "14:00" }],
+  // 🌟 ESTADO NUEVO: Día que estamos editando en este momento
+  const [activeDay, setActiveDay] = useState<string>("Lunes");
+
+  // 🌟 ESTADO NUEVO: Mapa de bloques por día
+  const [blocksByDay, setBlocksByDay] = useState<Record<string, TimeBlock[]>>(
+    initialData?.blocksByDay || {
+      Lunes: [{ start: "08:00", end: "14:00" }],
+      Martes: [{ start: "08:00", end: "14:00" }],
+      Miércoles: [{ start: "08:00", end: "14:00" }],
+      Jueves: [{ start: "08:00", end: "14:00" }],
+      Viernes: [{ start: "08:00", end: "14:00" }],
+      Sábado: [{ start: "08:00", end: "13:00" }],
+      Domingo: [{ start: "08:00", end: "14:00" }],
+    },
   );
 
-  // 🌟 ESTADO PARA INLINE ERRORS
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const clearError = (field: string) => {
@@ -56,25 +65,35 @@ export default function ShiftForm({
     }
   };
 
-  // --- LÓGICA DE DÍAS Y BLOQUES ---
   const toggleDay = (dayId: string) => {
     setWorkDays((prev) => {
       const next = prev.includes(dayId)
         ? prev.filter((d) => d !== dayId)
         : [...prev, dayId];
-      if (next.length > 0) clearError("workDays"); // Limpia el error si ya seleccionó uno
+      if (next.length > 0) clearError("workDays");
       return next;
     });
   };
 
+  // 🌟 Funciones ajustadas para operar sobre activeDay
   const handleAddBlock = () => {
-    setBlocks([...blocks, { start: "15:00", end: "18:00" }]);
-    clearError("blocks");
+    const currentDayBlocks = blocksByDay[activeDay] || [];
+    setBlocksByDay({
+      ...blocksByDay,
+      [activeDay]: [...currentDayBlocks, { start: "15:00", end: "18:00" }],
+    });
+    clearError(`blocks_${activeDay}`);
   };
 
   const handleRemoveBlock = (indexToRemove: number) => {
-    setBlocks(blocks.filter((_, index) => index !== indexToRemove));
-    clearError(`block_${indexToRemove}`);
+    const currentDayBlocks = blocksByDay[activeDay] || [];
+    setBlocksByDay({
+      ...blocksByDay,
+      [activeDay]: currentDayBlocks.filter(
+        (_, index) => index !== indexToRemove,
+      ),
+    });
+    clearError(`block_${activeDay}_${indexToRemove}`);
   };
 
   const handleBlockChange = (
@@ -82,13 +101,12 @@ export default function ShiftForm({
     field: keyof TimeBlock,
     value: string,
   ) => {
-    const newBlocks = [...blocks];
-    newBlocks[index][field] = value;
-    setBlocks(newBlocks);
-    clearError(`block_${index}`); // Limpia el error de ese bloque en particular
+    const currentDayBlocks = [...(blocksByDay[activeDay] || [])];
+    currentDayBlocks[index] = { ...currentDayBlocks[index], [field]: value };
+    setBlocksByDay({ ...blocksByDay, [activeDay]: currentDayBlocks });
+    clearError(`block_${activeDay}_${index}`);
   };
 
-  // 🌟 VALIDACIÓN COMPLETA ANTES DE ENVIAR
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
@@ -98,21 +116,35 @@ export default function ShiftForm({
       newErrors.workDays = "Debes seleccionar al menos un día laborable.";
     }
 
-    if (blocks.length === 0) {
-      newErrors.blocks = "Debes agregar al menos un bloque de horario.";
-    } else {
-      // Validar cada bloque individualmente
-      for (let i = 0; i < blocks.length; i++) {
-        const b = blocks[i];
-        if (!b.start || !b.end) {
-          newErrors[`block_${i}`] = "Completa ambas horas del bloque.";
-        } else if (b.start >= b.end) {
-          newErrors[`block_${i}`] = "La salida debe ser después de la entrada.";
+    // Validar solo los días que están marcados como "Laborables"
+    workDays.forEach((day) => {
+      const dayBlocks = blocksByDay[day] || [];
+      if (dayBlocks.length === 0) {
+        newErrors[`blocks_${day}`] = `Debes agregar horario para el ${day}.`;
+      } else {
+        for (let i = 0; i < dayBlocks.length; i++) {
+          const b = dayBlocks[i];
+          if (!b.start || !b.end) {
+            newErrors[`block_${day}_${i}`] = "Completa ambas horas.";
+          } else if (b.start >= b.end) {
+            newErrors[`block_${day}_${i}`] =
+              "Salida debe ser después de entrada.";
+          }
         }
       }
-    }
+    });
 
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      // Si hay error en un día específico, cambiamos la pestaña a ese día para que el usuario lo vea
+      const dayWithError = workDays.find(
+        (day) =>
+          newErrors[`blocks_${day}`] ||
+          Object.keys(newErrors).some((k) => k.includes(`block_${day}`)),
+      );
+      if (dayWithError) setActiveDay(dayWithError);
+    }
+
     return Object.keys(newErrors).length === 0;
   };
 
@@ -131,12 +163,14 @@ export default function ShiftForm({
         name,
         toleranceMinutes,
         workDays,
-        blocks,
+        blocksByDay, // 🌟 Enviamos el nuevo modelo
       });
     } finally {
       setIsSubmitting(false);
     }
   };
+
+  const activeBlocks = blocksByDay[activeDay] || [];
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8" noValidate>
@@ -248,15 +282,37 @@ export default function ShiftForm({
           </button>
         </div>
 
-        {errors.blocks && (
+        {/* 🌟 SELECTOR DE DÍA ACTIVO (ORDENADO Y LIMPIO) */}
+        <div className="flex gap-2 overflow-x-auto pb-2 mb-2 custom-scrollbar">
+          {/* Iteramos sobre WEEK_DAYS para garantizar el orden correcto */}
+          {WEEK_DAYS.filter((day) => workDays.includes(day.id)).map((day) => (
+            <button
+              key={day.id}
+              type="button"
+              onClick={() => setActiveDay(day.id)}
+              className={`px-4 py-2 cursor-pointer rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                activeDay === day.id
+                  ? "bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm"
+                  : "bg-white text-slate-500 border border-slate-200 hover:bg-slate-50"
+              }`}
+            >
+              {day.id}
+              {errors[`blocks_${day.id}`] && (
+                <span className="ml-1.5 w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {errors[`blocks_${activeDay}`] && (
           <p className="text-[11px] text-rose-500 mt-1 pl-1 mb-2">
-            {errors.blocks}
+            {errors[`blocks_${activeDay}`]}
           </p>
         )}
 
         <div className="space-y-3">
-          {blocks.map((block, index) => {
-            const blockError = errors[`block_${index}`];
+          {activeBlocks.map((block, index) => {
+            const blockError = errors[`block_${activeDay}_${index}`];
             return (
               <div
                 key={index}
@@ -305,11 +361,11 @@ export default function ShiftForm({
                       />
                     </div>
                   </div>
-                  {blocks.length > 1 && (
+                  {activeBlocks.length > 1 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveBlock(index)}
-                      className="mt-5 p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                      className="mt-5 p-2 cursor-pointer text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
                       title="Eliminar este bloque"
                     >
                       <Trash2 size={18} />
@@ -324,6 +380,14 @@ export default function ShiftForm({
               </div>
             );
           })}
+          {activeBlocks.length === 0 && (
+            <div className="text-center py-6 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
+              <p className="text-sm text-slate-400">
+                Haz clic en "Agregar Bloque" para definir el horario de este
+                día.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { ManageShifts } from "../../application/use-cases/ManageShifts";
 import { FirebaseShiftRepository } from "../../infrastructure/repositories/FirebaseShiftRepository";
 import type { Shift } from "../../domain/models/Shift";
-import { Plus, Edit2, Trash2, Clock, ArrowRight } from "lucide-react";
+import { Plus, Edit2, Trash2, Clock } from "lucide-react";
 import DataTable, { type ColumnDef } from "../components/ui/DataTable";
 import type { ActionMenuItem } from "../components/ui/ActionMenu";
 import ActionMenu from "../components/ui/ActionMenu";
@@ -10,6 +10,8 @@ import Modal from "../components/ui/Modal";
 import ShiftForm, { type ShiftFormData } from "../components/admin/ShiftForm";
 import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
+import toast from "react-hot-toast";
+import ConfirmModal from "../components/ui/ConfirmModal"; // 🌟 Asegúrate de que la ruta sea correcta
 
 const shiftRepo = new FirebaseShiftRepository();
 const manageShifts = new ManageShifts(shiftRepo);
@@ -20,6 +22,9 @@ export default function ShiftsPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [shiftToEdit, setShiftToEdit] = useState<Shift | null>(null);
+
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [shiftToDelete, setShiftToDelete] = useState<string | null>(null);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -49,34 +54,45 @@ export default function ShiftsPage() {
 
   const handleFormSubmit = async (formData: ShiftFormData) => {
     try {
+      // Mantenemos el parche para que no rompa la validación vieja si aún la tienes
+      const dataToSave = { ...formData, blocks: formData.blocksByDay || [] };
+
       if (shiftToEdit) {
-        await manageShifts.updateShift(formData as Shift);
+        await manageShifts.updateShift(dataToSave as Shift);
+        toast.success("Turno actualizado correctamente.");
       } else {
-        await manageShifts.createShift(formData);
+        await manageShifts.createShift(dataToSave as Shift);
+        toast.success("Turno creado correctamente.");
       }
       setIsModalOpen(false);
       await loadData();
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Error desconocido";
-      alert(`Hubo un error al guardar el turno: ${errorMessage}`);
+      toast.error(`Error al guardar el turno: ${errorMessage}`);
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (
-      !window.confirm(
-        "¿Estás seguro de eliminar este turno? Las maestras asignadas a él quedarán sin turno en la base de datos.",
-      )
-    )
-      return;
+  // 🌟 Solo abre el modal y guarda el ID
+  const handleDelete = (id: string) => {
+    setShiftToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  // 🌟 Ejecuta la eliminación real cuando el usuario confirma en el modal
+  const executeDelete = async () => {
+    if (!shiftToDelete) return;
     try {
-      await manageShifts.deleteShift(id);
+      await manageShifts.deleteShift(shiftToDelete);
+      toast.success("Turno eliminado correctamente.");
       await loadData();
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : "Error desconocido";
-      alert(`Hubo un error al eliminar el turno: ${errorMessage}`);
+      toast.error(`Error al eliminar el turno: ${errorMessage}`);
+    } finally {
+      setIsConfirmOpen(false);
+      setShiftToDelete(null);
     }
   };
 
@@ -96,30 +112,52 @@ export default function ShiftsPage() {
       ),
     },
     {
-      header: "Bloques de Horario",
-      className: "w-[20%]", // No es muy útil ordenarlo, pero le damos espacio
-      cell: (row) => (
-        <div className="flex flex-col gap-2">
-          {row.blocks.map((block, index) => (
-            <div
-              key={index}
-              className="inline-flex items-center w-max gap-2.5 px-3 py-1.5 rounded-lg bg-indigo-50/70 text-indigo-700 border border-indigo-100/50 shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
-            >
-              <span className="font-mono text-xs font-normal tracking-wide">
-                {block.start}
-              </span>
-              <ArrowRight
-                size={14}
-                className="text-indigo-400 opacity-70"
-                strokeWidth={2.5}
-              />
-              <span className="font-mono text-xs font-normal tracking-wide">
-                {block.end}
-              </span>
-            </div>
-          ))}
-        </div>
-      ),
+      header: "Horarios por Día",
+      className: "w-[25%]",
+      cell: (row) => {
+        // Agrupamos los días que tienen el MISMO horario para no repetir
+        // Ej: Lunes a Viernes 08:00 - 14:00, Sábado 08:00 - 13:00
+        const groupedSchedules: Record<string, string[]> = {};
+
+        row.workDays.forEach((day) => {
+          const blocks = row.blocksByDay?.[day];
+          if (blocks && blocks.length > 0) {
+            const timeString = blocks
+              .map((b) => `${b.start} - ${b.end}`)
+              .join(", ");
+            if (!groupedSchedules[timeString])
+              groupedSchedules[timeString] = [];
+            groupedSchedules[timeString].push(day.substring(0, 3)); // Usamos Lun, Mar, Mie...
+          }
+        });
+
+        const scheduleEntries = Object.entries(groupedSchedules);
+
+        if (scheduleEntries.length === 0) {
+          return (
+            <span className="text-xs text-slate-400 italic">
+              No configurado
+            </span>
+          );
+        }
+
+        return (
+          <div className="flex flex-col gap-1.5">
+            {scheduleEntries.map(([time, days], idx) => (
+              <div key={idx} className="flex items-center gap-2 text-xs">
+                <span className="font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md min-w-12.5 text-center">
+                  {days.length > 3
+                    ? `${days[0]} a ${days[days.length - 1]}`
+                    : days.join(", ")}
+                </span>
+                <span className="font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100/50">
+                  {time}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      },
     },
     {
       header: "Días Laborables",
@@ -207,6 +245,20 @@ export default function ShiftsPage() {
           onCancel={() => setIsModalOpen(false)}
         />
       </Modal>
+
+      {/* 🌟 AQUÍ ESTÁ EL NUEVO MODAL DE CONFIRMACIÓN */}
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          setIsConfirmOpen(false);
+          setShiftToDelete(null);
+        }}
+        onConfirm={executeDelete}
+        isDanger
+        title="Eliminar Turno"
+        message="¿Estás seguro de eliminar este turno? Las maestras asignadas a él quedarán sin turno activo en la base de datos y esto afectará su registro de asistencia."
+        confirmText="Sí, eliminar turno"
+      />
     </div>
   );
 }
