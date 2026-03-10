@@ -1,4 +1,4 @@
-export type UserRole = "ADMIN" | "WORKER";
+export type UserRole = "ADMIN" | "WORKER" | "SCANNER";
 
 export interface User {
   id: string;
@@ -9,10 +9,10 @@ export interface User {
   phone?: string;
   department?: string;
   position?: string;
+  isActive: boolean;
   shiftId?: string;
   shiftName?: string;
-  isActive: boolean;
-  requiresPasswordChange?: boolean;
+  badgeId?: string;
 }
 
 export interface WorkPeriod {

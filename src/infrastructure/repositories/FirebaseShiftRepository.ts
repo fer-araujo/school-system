@@ -66,6 +66,12 @@ export class FirebaseShiftRepository implements ShiftRepository {
     return null;
   }
 
+  // Agrega esto a tu repositorio de Turnos
+  async getAllAssignments(): Promise<ShiftAssignment[]> {
+    const snap = await getDocs(collection(db, "shift_assignments"));
+    return snap.docs.map((doc) => doc.data() as ShiftAssignment);
+  }
+
   async deleteShift(shiftId: string): Promise<void> {
     const docRef = doc(db, "shifts", shiftId);
     await deleteDoc(docRef);

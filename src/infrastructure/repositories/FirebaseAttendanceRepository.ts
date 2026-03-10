@@ -138,11 +138,59 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
     });
   }
 
-  listenToAttendancesByDate(
-    date: string,
+  async getAttendancesByDateRange(
+    start: string,
+    end: string,
+  ): Promise<AttendanceWithWorker[]> {
+    const q = query(
+      collection(db, "attendance"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+    );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) return [];
+
+    // Mismo mapeo que ya usas en tus otras funciones
+    return snapshot.docs.map((doc) => {
+      const data = doc.data();
+      const rawPeriods = (data.periods as FirestoreWorkPeriod[]) || [];
+      const mappedPeriods: WorkPeriod[] = rawPeriods.map((p) => ({
+        checkIn:
+          p.checkIn instanceof Timestamp
+            ? p.checkIn.toDate()
+            : (p.checkIn as Date),
+        checkOut:
+          p.checkOut instanceof Timestamp
+            ? p.checkOut.toDate()
+            : p.checkOut
+              ? (p.checkOut as Date)
+              : undefined,
+        isLate: p.isLate || false,
+      }));
+
+      return {
+        id: doc.id,
+        employeeNumber: data.employeeNumber as string,
+        userId: data.userId as string,
+        date: data.date as string,
+        periods: mappedPeriods,
+        status: data.status as AttendanceStatus,
+        workerName: data.workerName || "Desconocido",
+      };
+    });
+  }
+
+  listenToAttendancesByDateRange(
+    start: string,
+    end: string,
     callback: (data: AttendanceWithWorker[]) => void,
   ): () => void {
-    const q = query(collection(db, "attendance"), where("date", "==", date));
+    const q = query(
+      collection(db, "attendance"),
+      where("date", ">=", start),
+      where("date", "<=", end),
+    );
 
     // onSnapshot es la magia de Firebase para el tiempo real
     const unsubscribe = onSnapshot(q, async (snapshot) => {

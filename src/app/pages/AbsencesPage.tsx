@@ -13,9 +13,19 @@ import DataTable from "../components/ui/DataTable";
 import Modal from "../components/ui/Modal";
 import AbsenceForm from "../components/admin/AbsenceForm";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
+// 🌟 Importamos Toast y el ConfirmModal (Asegúrate de que la ruta del ConfirmModal sea correcta)
+import toast from "react-hot-toast";
+import ConfirmModal from "../components/ui/ConfirmModal";
 
-const manageAbsences = new ManageAbsences();
-const manageEmployees = new ManageEmployees();
+import { FirebaseEmployeeRepository } from "../../infrastructure/repositories/FirebaseEmployeeRepository";
+import { FirebaseShiftRepository } from "../../infrastructure/repositories/FirebaseShiftRepository";
+import { FirebaseAbsenceRepository } from "../../infrastructure/repositories/FirebaseAbsenceRepository";
+
+const employeeRepo = new FirebaseEmployeeRepository();
+const shiftRepo = new FirebaseShiftRepository();
+const absenceRepo = new FirebaseAbsenceRepository();
+const manageAbsences = new ManageAbsences(absenceRepo, employeeRepo);
+const manageEmployees = new ManageEmployees(employeeRepo, shiftRepo);
 
 export default function AbsencesPage() {
   const [absences, setAbsences] = useState<Absence[]>([]);
@@ -35,6 +45,10 @@ export default function AbsencesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [absenceToEdit, setAbsenceToEdit] = useState<Absence | null>(null);
 
+  // 🌟 Estados para el Modal de Confirmación de Eliminación
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [absenceToDelete, setAbsenceToDelete] = useState<string | null>(null);
+
   const loadData = async () => {
     setIsLoading(true);
     try {
@@ -46,6 +60,7 @@ export default function AbsencesPage() {
       setEmployees(empData);
     } catch (error) {
       console.error(error);
+      toast.error("Error al cargar los datos.");
     } finally {
       setIsLoading(false);
     }
@@ -77,6 +92,7 @@ export default function AbsencesPage() {
           employeeName: absenceToEdit.employeeName,
         };
         await manageAbsences.updateAbsence(absenceToUpdate);
+        toast.success("Permiso actualizado correctamente."); // 🌟 Toast de éxito
       } else {
         await manageAbsences.createAbsence({
           userId: formData.userId,
@@ -85,31 +101,40 @@ export default function AbsencesPage() {
           endDate: formData.endDate,
           notes: formData.notes,
         });
+        toast.success("Permiso registrado correctamente."); // 🌟 Toast de éxito
       }
       setIsModalOpen(false);
       await loadData();
     } catch (error) {
       console.error("Error al guardar permiso:", error);
-      alert("Hubo un error al guardar el permiso.");
+      toast.error("Hubo un error al guardar el permiso."); // 🌟 Toast de error
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm("¿Estás seguro de eliminar este registro?")) return;
+  // 🌟 Lógica preparada para el ConfirmModal
+  const confirmDelete = (id: string) => {
+    setAbsenceToDelete(id);
+    setIsConfirmOpen(true);
+  };
+
+  const executeDelete = async () => {
+    if (!absenceToDelete) return;
     try {
-      await manageAbsences.deleteAbsence(id);
+      await manageAbsences.deleteAbsence(absenceToDelete);
+      toast.success("Permiso eliminado correctamente."); // 🌟 Toast de éxito
       await loadData();
     } catch (error) {
       console.error("Error al eliminar permiso:", error);
-      alert("Error al eliminar el permiso.");
+      toast.error("Error al eliminar el permiso."); // 🌟 Toast de error
+    } finally {
+      setIsConfirmOpen(false);
+      setAbsenceToDelete(null);
     }
   };
 
-  // 🌟 Lógica para filtrar las ausencias por el mes seleccionado
   const filteredAbsences = useMemo(() => {
     if (!dateRange.start || !dateRange.end) return absences;
     return absences.filter((abs) => {
-      // Verificamos que la fecha de inicio del permiso esté dentro del rango
       return abs.startDate >= dateRange.start && abs.startDate <= dateRange.end;
     });
   }, [absences, dateRange]);
@@ -118,7 +143,7 @@ export default function AbsencesPage() {
     {
       header: "Empleado",
       sortable: true,
-      accessorKey: "employeeName", // 🌟 ORDENABLE
+      accessorKey: "employeeName",
       className: "pl-6 w-[25%]",
       cell: (row) => {
         const name = row.employeeName || "Desconocido";
@@ -138,7 +163,7 @@ export default function AbsencesPage() {
     {
       header: "Fechas",
       sortable: true,
-      accessorKey: "startDate", // 🌟 ORDENABLE
+      accessorKey: "startDate",
       className: "w-[20%]",
       cell: (row) => (
         <div className="flex flex-col gap-0.5 text-xs">
@@ -166,7 +191,7 @@ export default function AbsencesPage() {
     {
       header: "Tipo",
       sortable: true,
-      accessorKey: "type", // 🌟 ORDENABLE
+      accessorKey: "type",
       className: "w-[20%]",
       cell: (row) => {
         const isBad = row.type === "Falta Injustificada";
@@ -182,7 +207,7 @@ export default function AbsencesPage() {
     },
     {
       header: "Notas / Justificación",
-      className: "max-w-[250px]", // No ordenable
+      className: "max-w-[250px]",
       cell: (row) => (
         <p className="text-xs text-slate-500 truncate" title={row.notes}>
           {row.notes || (
@@ -205,7 +230,8 @@ export default function AbsencesPage() {
             label: "Eliminar",
             icon: <Trash2 size={16} />,
             variant: "danger",
-            onClick: () => handleDelete(row.id),
+            // 🌟 Ahora llamamos a la función que abre el Modal en vez del window.confirm
+            onClick: () => confirmDelete(row.id),
           },
         ];
         return <ActionMenu items={menuItems} />;
@@ -215,7 +241,6 @@ export default function AbsencesPage() {
 
   return (
     <div className="p-8 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700 font-sans text-slate-800">
-      {/* HEADER: Añadido el filtro de fecha */}
       <AdminPageHeader
         title="Permisos y Ausencias"
         description="Gestión de faltas, vacaciones y justificantes médicos."
@@ -228,7 +253,7 @@ export default function AbsencesPage() {
 
       <DataTable
         columns={columns}
-        data={filteredAbsences} // 🌟 PASAMOS LA DATA FILTRADA POR MES
+        data={filteredAbsences}
         isLoading={isLoading}
         loadingText="Cargando historial..."
         emptyText="No hay registros de ausencias para el mes seleccionado."
@@ -246,6 +271,17 @@ export default function AbsencesPage() {
           onCancel={() => setIsModalOpen(false)}
         />
       </Modal>
+
+      {/* 🌟 Inyectamos el ConfirmModal para las eliminaciones */}
+      <ConfirmModal
+        isOpen={isConfirmOpen}
+        onClose={() => setIsConfirmOpen(false)}
+        onConfirm={executeDelete}
+        isDanger
+        title="Eliminar Permiso"
+        message="¿Estás seguro de eliminar este registro? Esta acción no se puede deshacer y afectará el conteo de asistencia del empleado."
+        confirmText="Sí, eliminar"
+      />
     </div>
   );
 }

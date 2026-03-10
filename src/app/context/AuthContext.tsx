@@ -7,11 +7,14 @@ import { auth } from "../../infrastructure/firebase/config";
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, pass: string) => Promise<void>;
+  // 🌟 Cambiamos Promise<void> por Promise<User | null> para que el Login reciba el rol
+  login: (email: string, pass: string) => Promise<User | null>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// 🌟 Instanciamos el repositorio con el nombre correcto
 const authRepo = new FirebaseAuthRepository();
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -21,7 +24,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Ya sabemos que la sesión existe en Firebase, ahora traemos tus datos (rol, nombre, etc)
         try {
           const u = await authRepo.getCurrentUser();
           setUser(u);
@@ -30,21 +32,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setUser(null);
         }
       } else {
-        // Definitivamente no hay sesión activa
         setUser(null);
       }
-
-      // Bajamos la bandera de loading HASTA QUE Firebase nos dio una respuesta definitiva
       setLoading(false);
     });
 
-    // Limpiamos el listener cuando el componente se desmonta
     return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, pass: string) => {
-    const loggedUser = await authRepo.login(email, pass);
-    setUser(loggedUser);
+  const login = async (
+    email: string,
+    password: string,
+  ): Promise<User | null> => {
+    // 🌟 El repositorio de Auth ya debe encargarse de devolver al User (con su rol)
+    const userData = await authRepo.login(email, password);
+    setUser(userData);
+    return userData;
   };
 
   const logout = async () => {

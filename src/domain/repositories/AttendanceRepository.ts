@@ -11,10 +11,14 @@ export interface AttendanceRepository {
     skippedBlocks?: number,
   ): Promise<void>;
   getAttendancesByDate(date: string): Promise<AttendanceWithWorker[]>;
-
+  getAttendancesByDateRange(
+    start: string,
+    end: string,
+  ): Promise<AttendanceWithWorker[]>;
   // NUEVO: Método para escuchar en tiempo real
-  listenToAttendancesByDate(
-    date: string,
+  listenToAttendancesByDateRange(
+    start: string,
+    end: string,
     callback: (data: AttendanceWithWorker[]) => void,
   ): () => void;
 }

@@ -8,4 +8,9 @@ export interface AbsenceRepository {
   ): Promise<Absence | null>;
   countAbsencesByDate(date: string): Promise<number>;
   getAbsencesByDate(date: string): Promise<Absence[]>;
+  getAbsencesByDateRange(start: string, end: string): Promise<Absence[]>;
+
+  // 🌟 MÉTODOS NUEVOS
+  getAllAbsences(): Promise<Absence[]>;
+  deleteAbsence(id: string): Promise<void>;
 }

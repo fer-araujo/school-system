@@ -9,33 +9,61 @@ import {
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../../infrastructure/firebase/config"; // Esto es válido aquí solo para el reset, aunque idealmente iría al AuthRepository
+import toast from "react-hot-toast";
 
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Estados para los inputs
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // Estados para los errores (Global e Inline)
   const [globalError, setGlobalError] = useState("");
   const [emailError, setEmailError] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
+  const handleResetPassword = async () => {
+    if (!email.trim()) {
+      setEmailError(
+        "Ingresa tu correo aquí arriba para enviarte el enlace de recuperación.",
+      );
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      toast.success("¡Enlace enviado! Revisa tu bandeja de entrada o spam.", {
+        duration: 5000,
+      });
+    } catch (error: unknown) {
+      // 🌟 LE GANAMOS AL LINTER PERRO: Verificamos si existe la propiedad 'code' de forma segura
+      const firebaseError = error as { code?: string };
+
+      if (firebaseError.code === "auth/user-not-found") {
+        toast.error("No hay ninguna cuenta registrada con este correo.");
+      } else {
+        toast.error(
+          "Error al enviar el correo. Revisa que el formato sea correcto.",
+        );
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // 1. Limpiamos errores previos
     setGlobalError("");
     setEmailError("");
     setPasswordError("");
 
     let isValid = true;
-
-    // 2. Validaciones Inline Customizadas
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/; // Regex básico para correos
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!email.trim()) {
       setEmailError("El correo electrónico es requerido.");
@@ -54,39 +82,46 @@ export default function Login() {
 
     if (!isValid) return;
 
-    // 3. Ejecución del Login
     setIsLoading(true);
     try {
-      await login(email, password);
-      navigate("/admin");
-    } catch (error: unknown) {
-      // 4. Traductor de Errores de Firebase a mensajes amigables
-      if (error instanceof Error) {
-        const errorMessage = error.message.toLowerCase();
+      // 🌟 ARQUITECTURA LIMPIA: El context/repository hace el trabajo sucio y nos devuelve la data
+      const userData = await login(email, password);
 
-        if (
-          errorMessage.includes("auth/invalid-credential") ||
-          errorMessage.includes("auth/user-not-found") ||
-          errorMessage.includes("auth/wrong-password")
-        ) {
-          setGlobalError(
-            "Correo o contraseña incorrectos. Por favor, verifica tus datos.",
-          );
-        } else if (errorMessage.includes("auth/too-many-requests")) {
-          setGlobalError(
-            "Demasiados intentos fallidos. Por seguridad, intenta más tarde.",
-          );
-        } else if (errorMessage.includes("auth/network-request-failed")) {
-          setGlobalError(
-            "Error de conexión. Revisa tu internet e intenta de nuevo.",
-          );
-        } else {
-          setGlobalError(
-            "Ocurrió un error al intentar acceder. Contacta a soporte técnico.",
-          );
-        }
+      // Dependiendo de cómo lo tengas en tu AuthContext, podrías retornar el string directo
+      // ej: const role = await login(...);
+      const role = userData?.role || "ADMIN"; // Fallback por seguridad
+
+      if (role === "SCANNER") {
+        navigate("/scanner");
+      } else if (role === "WORKER") {
+        navigate("/employee");
       } else {
-        setGlobalError("Error desconocido. Verifica tu conexión.");
+        navigate("/admin");
+      }
+    } catch (error: unknown) {
+      const firebaseError = error as { message?: string };
+      const errorMessage = firebaseError.message?.toLowerCase() || "";
+
+      if (
+        errorMessage.includes("invalid-credential") ||
+        errorMessage.includes("user-not-found") ||
+        errorMessage.includes("wrong-password")
+      ) {
+        setGlobalError(
+          "Correo o contraseña incorrectos. Por favor, verifica tus datos.",
+        );
+      } else if (errorMessage.includes("too-many-requests")) {
+        setGlobalError(
+          "Demasiados intentos fallidos. Por seguridad, intenta más tarde.",
+        );
+      } else if (errorMessage.includes("network-request-failed")) {
+        setGlobalError(
+          "Error de conexión. Revisa tu internet e intenta de nuevo.",
+        );
+      } else {
+        setGlobalError(
+          "Ocurrió un error al intentar acceder. Contacta a soporte técnico.",
+        );
       }
     } finally {
       setIsLoading(false);
@@ -101,7 +136,6 @@ export default function Login() {
         <div className="absolute bottom-[-10%] right-[-20%] w-150 h-150 bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none" />
         <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10 pointer-events-none" />
 
-        {/* Header: Logo restaurado */}
         <div className="relative z-10 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-linear-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
             <ShieldCheck className="w-6 h-6 text-white" />
@@ -111,7 +145,6 @@ export default function Login() {
           </span>
         </div>
 
-        {/* Mensaje Principal */}
         <div className="relative z-10 max-w-md">
           <h2 className="text-4xl font-extrabold text-white tracking-tighter leading-tight mb-6">
             Bienvenido al portal digital de{" "}
@@ -147,7 +180,6 @@ export default function Login() {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5" noValidate>
-            {/* Mensaje de Error Global */}
             {globalError && (
               <div className="bg-rose-50 border border-rose-100 text-rose-600 p-3.5 rounded-xl flex items-start gap-3 text-sm animate-in slide-in-from-top-2">
                 <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
@@ -155,7 +187,6 @@ export default function Login() {
               </div>
             )}
 
-            {/* Input Correo */}
             <div className="space-y-1.5">
               <label className="text-sm font-bold text-slate-700 ml-1">
                 Correo Electrónico
@@ -189,7 +220,6 @@ export default function Login() {
               )}
             </div>
 
-            {/* Input Contraseña */}
             <div className="space-y-1.5">
               <div className="flex justify-between items-center ml-1">
                 <label className="text-sm font-bold text-slate-700">
@@ -197,7 +227,9 @@ export default function Login() {
                 </label>
                 <button
                   type="button"
-                  className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  onClick={handleResetPassword}
+                  disabled={isLoading}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors disabled:opacity-50"
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
@@ -231,7 +263,6 @@ export default function Login() {
               )}
             </div>
 
-            {/* Botón Submit */}
             <button
               type="submit"
               disabled={isLoading}

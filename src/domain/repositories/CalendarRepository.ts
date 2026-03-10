@@ -1,8 +1,10 @@
 import type { Holiday } from "../models/Holiday";
 
 export interface CalendarRepository {
-  getHolidayByDate(date: string): Promise<Holiday | null>;
-  saveHoliday(holiday: Holiday): Promise<void>;
-  getUpcomingHolidays(): Promise<Holiday[]>;
-  deleteHoliday(date: string): Promise<void>; // <-- NUEVO
+  getHolidays(): Promise<Holiday[]>;
+  getAllHolidays(): Promise<Holiday[]>; // 🌟 NUEVO
+  getHolidayByDate(dateIso: string): Promise<Holiday | null>;
+  createHoliday(data: Omit<Holiday, "id">): Promise<void>;
+  updateHoliday(data: Holiday): Promise<void>;
+  deleteHoliday(id: string): Promise<void>;
 }

@@ -74,7 +74,6 @@ export default function AbsenceForm({
 
     // Ejecutamos validación local antes de tocar la base de datos
     if (!validateForm()) {
-      // Reemplazo del alert() genérico
       console.error("Faltan campos obligatorios");
       toast.error("Por favor, revisa los campos en rojo.");
       return;

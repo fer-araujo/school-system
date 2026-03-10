@@ -34,7 +34,7 @@ export default function Modal({
         </div>
 
         {/* El children (el formulario) va aquí adentro */}
-        <div className="p-6 md:p-8 max-h-[75vh] overflow-y-auto">
+        <div className="p-6 md:p-8 max-h-[85vh] overflow-y-auto">
           {children}
         </div>
       </div>

@@ -10,10 +10,21 @@ import {
   orderBy,
   query,
   setDoc,
+  updateDoc,
   where,
 } from "firebase/firestore";
 
 export class FirebaseCalendarRepository implements CalendarRepository {
+  async getAllHolidays(): Promise<Holiday[]> {
+    const snap = await getDocs(collection(db, "holidays"));
+    const holidays = snap.docs.map((doc) => doc.data() as Holiday);
+    return holidays.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  async getHolidays(): Promise<Holiday[]> {
+    return this.getAllHolidays();
+  }
+
   async getHolidayByDate(date: string): Promise<Holiday | null> {
     // Buscamos un documento cuyo ID sea exactamente la fecha (ej: "2026-03-20")
     const docRef = doc(db, "calendar", date);
@@ -34,6 +45,11 @@ export class FirebaseCalendarRepository implements CalendarRepository {
     };
   }
 
+  async createHoliday(data: Omit<Holiday, "id">): Promise<void> {
+    const newId = `hol_${Date.now()}`;
+    await setDoc(doc(db, "holidays", newId), { ...data, id: newId });
+  }
+
   async saveHoliday(holiday: Holiday): Promise<void> {
     const docRef = doc(db, "calendar", holiday.date);
     await setDoc(docRef, holiday); // Firebase creará la colección si no existe
@@ -52,6 +68,11 @@ export class FirebaseCalendarRepository implements CalendarRepository {
 
     const snap = await getDocs(q);
     return snap.docs.map((doc) => doc.data() as Holiday);
+  }
+
+  async updateHoliday(data: Holiday): Promise<void> {
+    const ref = doc(db, "holidays", data.id);
+    await updateDoc(ref, { ...data });
   }
 
   async deleteHoliday(date: string): Promise<void> {

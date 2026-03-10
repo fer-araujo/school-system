@@ -3,15 +3,8 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
 
-// --- COMPONENTES UI ---
 import Sidebar from "./components/ui/Sidebar";
-
-// --- PÁGINAS GENERALES ---
 import Login from "./pages/Login";
-import TeacherQRCard from "./pages/TeacherQR";
-import ForcePasswordChange from "./pages/ForcePasswordChange";
-
-// --- PÁGINAS ADMIN ---
 import AdminOverview from "./pages/AdminOverview";
 import Scanner from "./pages/Scanner";
 import EmployeesPage from "./pages/EmployeesPage";
@@ -19,27 +12,13 @@ import ShiftsPage from "./pages/ShiftPage";
 import AbsencesPage from "./pages/AbsencesPage";
 import HolidaysPage from "./pages/HolidaysPage";
 
-// --- MAIN LAYOUT ---
+// --- MAIN LAYOUT (Con Sidebar) ---
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
   return (
-    <div className="flex min-h-screen bg-slate-50 font-sans selection:bg-blue-500/30 -z-10">
+    <div className="flex min-h-screen bg-slate-50 font-sans selection:bg-blue-500/30">
       <div className="absolute top-0 inset-x-0 h-96 bg-linear-to-b from-blue-100/40 to-transparent pointer-events-none"></div>
       <Sidebar />
       <main className="flex-1 overflow-x-hidden relative flex flex-col min-h-screen">
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            className: "text-sm font-medium shadow-lg rounded-xl",
-            success: {
-              iconTheme: { primary: "#10b981", secondary: "white" },
-              style: { border: "1px solid #a7f3d0" },
-            },
-            error: {
-              iconTheme: { primary: "#f43f5e", secondary: "white" },
-              style: { border: "1px solid #fecdd3" },
-            },
-          }}
-        />
         <div className="relative z-10 flex-1 p-4 md:p-8">{children}</div>
       </main>
     </div>
@@ -57,7 +36,6 @@ export default function App() {
     );
   }
 
-  // Si no hay usuario, mandarlo al login
   if (!user) {
     return (
       <Routes>
@@ -66,61 +44,48 @@ export default function App() {
     );
   }
 
-  // <-- 2. LA TRAMPA DE SEGURIDAD (EL SECUESTRO) -->
-  // Si el usuario existe, pero tiene la bandera activa, bloqueamos TODAS las rutas normales
-  if (user.requiresPasswordChange) {
+  // --- RENDERIZADO POR ROL ---
+
+  // 1. Si es SCANNER: Solo ve la terminal (Sin Sidebar)
+  if (user.role === "SCANNER") {
     return (
       <>
-        <Toaster
-          position="top-center"
-          toastOptions={{
-            className: "text-sm font-medium shadow-lg rounded-xl",
-            success: {
-              iconTheme: { primary: "#10b981", secondary: "white" },
-              style: { border: "1px solid #a7f3d0" },
-            },
-            error: {
-              iconTheme: { primary: "#f43f5e", secondary: "white" },
-              style: { border: "1px solid #fecdd3" },
-            },
-          }}
-        />
-        <ForcePasswordChange />
+        <Toaster position="top-center" />
+        <Routes>
+          <Route path="/scanner" element={<Scanner />} />
+          <Route path="*" element={<Navigate to="/scanner" replace />} />
+        </Routes>
       </>
     );
   }
 
-  // 3. Si pasa las validaciones, le mostramos el sistema normal
+  // 2. Si es ADMIN: Layout completo con Sidebar
   return (
-    <MainLayout>
-      <Routes>
-        {/* Rutas Compartidas / Trabajador */}
-        <Route
-          path="/"
-          element={
-            user.role === "ADMIN" ? (
-              <Navigate to="/admin/dashboard" replace />
-            ) : (
-              <TeacherQRCard />
-            )
-          }
-        />
-
-        {/* Rutas Exclusivas ADMIN */}
-        {user.role === "ADMIN" && (
-          <>
-            <Route path="/admin/dashboard" element={<AdminOverview />} />
-            <Route path="/admin/scan" element={<Scanner />} />
-            <Route path="/admin/employees" element={<EmployeesPage />} />
-            <Route path="/admin/shifts" element={<ShiftsPage />} />
-            <Route path="/admin/calendar" element={<HolidaysPage />} />
-            <Route path="/admin/absences" element={<AbsencesPage />} />
-          </>
-        )}
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </MainLayout>
+    <>
+      <Toaster
+        position="top-center"
+        toastOptions={{
+          className: "text-sm font-medium shadow-lg rounded-xl",
+        }}
+      />
+      <MainLayout>
+        <Routes>
+          <Route
+            path="/"
+            element={<Navigate to="/admin/dashboard" replace />}
+          />
+          <Route path="/admin/dashboard" element={<AdminOverview />} />
+          <Route path="/admin/scan" element={<Scanner />} />
+          <Route path="/admin/employees" element={<EmployeesPage />} />
+          <Route path="/admin/shifts" element={<ShiftsPage />} />
+          <Route path="/admin/calendar" element={<HolidaysPage />} />
+          <Route path="/admin/absences" element={<AbsencesPage />} />
+          <Route
+            path="*"
+            element={<Navigate to="/admin/dashboard" replace />}
+          />
+        </Routes>
+      </MainLayout>
+    </>
   );
 }

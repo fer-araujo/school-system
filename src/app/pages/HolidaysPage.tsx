@@ -9,8 +9,10 @@ import DataTable from "../components/ui/DataTable";
 import Modal from "../components/ui/Modal";
 import HolidayForm from "../components/admin/HolidayForm";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
+import { FirebaseCalendarRepository } from "../../infrastructure/repositories/FirebaseCalendarRepository";
 
-const manageHolidays = new ManageHolidays();
+const calendarRepo = new FirebaseCalendarRepository();
+const manageHolidays = new ManageHolidays(calendarRepo);
 
 export default function HolidaysPage() {
   const [holidays, setHolidays] = useState<Holiday[]>([]);

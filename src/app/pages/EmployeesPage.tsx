@@ -31,12 +31,13 @@ import SelectionToolbar from "../components/ui/SelectionToolbar";
 
 // Helpers
 import { getAvatarColor } from "../../utils/helpers";
-import { showRegistrationToast } from "../../utils/toastNotifications";
 import AdminPageHeader from "../components/ui/AdminPageHeader";
 import Checkbox from "../components/ui/Checkbox";
+import { FirebaseEmployeeRepository } from "../../infrastructure/repositories/FirebaseEmployeeRepository";
 
-const manageEmployees = new ManageEmployees();
+const employeeRepo = new FirebaseEmployeeRepository();
 const shiftRepo = new FirebaseShiftRepository();
+const manageEmployees = new ManageEmployees(employeeRepo, shiftRepo);
 const manageShifts = new ManageShifts(shiftRepo);
 
 export default function EmployeesPage() {
@@ -141,9 +142,7 @@ export default function EmployeesPage() {
   };
 
   const handleSelectAll = (checked: boolean) => {
-    setSelectedUserIds(
-      checked ? processedEmployees.map((emp) => emp.id) : [],
-    );
+    setSelectedUserIds(checked ? processedEmployees.map((emp) => emp.id) : []);
   };
 
   const handleToggleUser = (uid: string) => {
@@ -262,6 +261,8 @@ export default function EmployeesPage() {
     try {
       if (employeeToEdit) {
         await manageEmployees.updateEmployee(formData);
+
+        // Si cambió de turno, lo registramos en el historial
         if (
           formData.selectedShiftId &&
           formData.selectedShiftId !== employeeToEdit.shiftId
@@ -274,19 +275,20 @@ export default function EmployeesPage() {
         }
         toast.success("Perfil actualizado correctamente.");
       } else {
-        // MODO CREACIÓN
-        const newEmployeeData = await manageEmployees.createEmployee(formData);
+        // 🌟 MODO CREACIÓN (CON GAFETES)
+        const newUid = await manageEmployees.createEmployee(formData);
 
+        // Si le asignaron un turno desde la creación, lo registramos en el historial
         if (formData.selectedShiftId && formData.validFrom) {
           await manageShifts.assignToUser(
-            newEmployeeData.uid,
+            newUid,
             formData.selectedShiftId,
             formData.validFrom,
           );
         }
 
-        // Llamamos a nuestro Toast VIP Refactorizado
-        showRegistrationToast(newEmployeeData);
+        // Adiós al Toast VIP, hola al Toast estándar corporativo
+        toast.success("Empleado creado y Gafete vinculado exitosamente.");
       }
 
       setIsModalOpen(false);

@@ -9,9 +9,14 @@ export class ListenDailyAttendances {
   }
 
   execute(
-    date: string,
+    dateRange: { start: string; end: string }, // 🌟 AHORA RECIBE EL RANGO
     callback: (data: AttendanceWithWorker[]) => void,
   ): () => void {
-    return this.attendanceRepo.listenToAttendancesByDate(date, callback);
+    // LLama al nuevo método del repositorio
+    return this.attendanceRepo.listenToAttendancesByDateRange(
+      dateRange.start,
+      dateRange.end,
+      callback,
+    );
   }
 }

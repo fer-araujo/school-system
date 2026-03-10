@@ -6,6 +6,7 @@ import type {
   WorkPeriod,
 } from "../../domain/models/User";
 import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
+import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 
 export interface DashboardTableRecord extends AttendanceWithWorker {
   department?: string;
@@ -17,48 +18,59 @@ export class GetDashboardStats {
   private manageEmployees: ManageEmployees;
   private absenceRepo: AbsenceRepository;
   private shiftRepo: ShiftRepository;
+  private calendarRepo: CalendarRepository;
 
   constructor(
     manageEmployees: ManageEmployees,
     absenceRepo: AbsenceRepository,
     shiftRepo: ShiftRepository,
+    calendarRepo: CalendarRepository,
   ) {
     this.manageEmployees = manageEmployees;
     this.absenceRepo = absenceRepo;
     this.shiftRepo = shiftRepo;
+    this.calendarRepo = calendarRepo;
   }
 
   async execute(
-    targetDate: string,
+    dateRange: { start: string; end: string },
     currentAttendances: AttendanceWithWorker[],
   ) {
     try {
-      const [allWorkers, shifts, absences] = await Promise.all([
-        this.manageEmployees.getAllWorkers(),
-        this.shiftRepo.getAllShifts(),
-        this.absenceRepo.getAbsencesByDate(targetDate),
-      ]);
+      // 🚀 BULK FETCH: Traemos TODO
+      const [allWorkers, shifts, allAssignments, allAbsences, allHolidays] =
+        await Promise.all([
+          this.manageEmployees.getAllWorkers(),
+          this.shiftRepo.getAllShifts(),
+          this.shiftRepo.getAllAssignments(),
+          this.absenceRepo.getAbsencesByDateRange(
+            dateRange.start,
+            dateRange.end,
+          ),
+          this.calendarRepo.getAllHolidays(), // 🌟 TRAEMOS FESTIVOS
+        ]);
 
       const activeWorkers = allWorkers.filter((w) => w.isActive);
-      const absentUserIds = new Set(absences.map((a) => a.userId));
-      const attendedUserIds = new Set(currentAttendances.map((a) => a.userId));
+
+      const dates: string[] = [];
+      const curr = new Date(dateRange.start + "T12:00:00");
+      const last = new Date(dateRange.end + "T12:00:00");
+      while (curr <= last) {
+        dates.push(curr.toISOString().split("T")[0]);
+        curr.setDate(curr.getDate() + 1);
+      }
 
       let expectedToday = 0;
       let faltasInjustificadas = 0;
+      let totalAbsences = 0;
       let maxDeadline = -1;
+      const fullTableData: DashboardTableRecord[] = [];
 
       const now = new Date();
-      // Ajuste de zona horaria para obtener la fecha local correcta
       const offsetMs = now.getTimezoneOffset() * 60000;
       const localNow = new Date(now.getTime() - offsetMs);
       const todayStr = localNow.toISOString().split("T")[0];
-
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
-
-      // 🌟 LÓGICA DE VIAJE EN EL TIEMPO: ¿Estamos revisando un día en el pasado?
-      const isPastDate = targetDate < todayStr;
-
-      const fullTableData: DashboardTableRecord[] = [];
 
       const phantomPeriod: WorkPeriod = {
         isAbsent: true,
@@ -66,106 +78,136 @@ export class GetDashboardStats {
         checkOut: null as unknown as Date,
       };
 
-      for (const worker of activeWorkers) {
-        // 1. ¿Tiene falta justificada (Permiso/Vacaciones)?
-        if (absentUserIds.has(worker.id)) {
-          const absenceDetail = absences.find((a) => a.userId === worker.id);
-          fullTableData.push({
-            id: `${worker.id}_${targetDate}`,
-            userId: worker.id,
-            employeeNumber: worker.employeeNumber || "0000",
-            date: targetDate,
-            periods: [phantomPeriod],
-            status: "ABSENT",
-            workerName: worker.fullName || "Empleado",
-            department: worker.department,
-            isJustified: true,
-            absenceReason: absenceDetail?.type || "Permiso",
-          });
-          continue;
-        }
+      for (let i = 0; i < dates.length; i++) {
+        const targetDate = dates[i];
+        const isPastDate = targetDate < todayStr;
 
-        // 2. Revisamos su turno
-        // 2. Revisamos su turno
-        const assignment = await this.shiftRepo.getActiveAssignmentForUser(
-          worker.id,
-          targetDate,
+        // 🌟 VERIFICAMOS SI HOY ES FESTIVO
+        const isHoliday = allHolidays.find((h) => h.date === targetDate);
+
+        const attendancesForDate = currentAttendances.filter(
+          (a) => a.date === targetDate,
         );
-        if (assignment) {
-          const shift = shifts.find((s) => s.id === assignment.shiftId);
-          if (shift && shift.blocks && shift.blocks.length > 0) {
-            // Forzamos la hora a mediodía para evitar saltos de zona horaria por UTC
-            const dateObj = new Date(targetDate + "T12:00:00");
-            const dayIndex = dateObj.getDay(); // 0 = Domingo, 1 = Lunes...
+        const attendedUserIds = new Set(
+          attendancesForDate.map((a) => a.userId),
+        );
 
-            // Leemos el ID exacto ("Lunes", "Martes") de tu constante global
-            const targetDayId = WEEK_DAYS[dayIndex].id;
-
-            // Si el día de hoy NO está en los días laborables del turno, lo saltamos (descanso)
-            if (!shift.workDays.includes(targetDayId)) {
-              continue;
+        for (const worker of activeWorkers) {
+          // A. ¿Asistió a pesar del festivo/permiso? (Prioridad 1)
+          if (attendedUserIds.has(worker.id)) {
+            const attendanceRecord = attendancesForDate.find(
+              (a) => a.userId === worker.id,
+            );
+            if (attendanceRecord) {
+              faltasInjustificadas += attendanceRecord.periods.filter(
+                (p) => p.isAbsent,
+              ).length;
+              fullTableData.push({
+                ...attendanceRecord,
+                department: worker.department,
+              });
             }
+            continue;
+          }
 
-            expectedToday++;
+          // B. ¿Es Día Festivo? (Prioridad 2)
+          if (isHoliday) {
+            // No hacemos nada en la tabla del dashboard para no llenarla de registros vacíos,
+            // simplemente saltamos a este empleado para no ponerle falta.
+            continue;
+          }
 
-            const block = shift.blocks[0];
-            const [h, m] = block.start.split(":").map(Number);
-            const startMinutes = h * 60 + m;
-            const tolerance = shift.toleranceMinutes || 0;
-            const deadline = startMinutes + tolerance;
+          // C. ¿Falta Justificada? (Prioridad 3)
+          const absenceDetail = allAbsences.find(
+            (a) =>
+              a.userId === worker.id &&
+              targetDate >= a.startDate &&
+              targetDate <= a.endDate,
+          );
 
-            if (deadline > maxDeadline) maxDeadline = deadline;
+          if (absenceDetail) {
+            totalAbsences++;
+            fullTableData.push({
+              id: `${worker.id}_${targetDate}`,
+              userId: worker.id,
+              employeeNumber: worker.employeeNumber || "0000",
+              date: targetDate,
+              periods: [phantomPeriod],
+              status: "ABSENT",
+              workerName: worker.fullName || "Empleado",
+              department: worker.department,
+              isJustified: true,
+              absenceReason: absenceDetail.type || "Permiso",
+            });
+            continue;
+          }
 
-            // 3. ¿Vino a trabajar?
-            if (attendedUserIds.has(worker.id)) {
-              const attendanceRecord = currentAttendances.find(
-                (a) => a.userId === worker.id,
-              );
-              if (attendanceRecord) {
-                const faltasPrevias = attendanceRecord.periods.filter(
-                  (p) => p.isAbsent,
-                ).length;
-                faltasInjustificadas += faltasPrevias;
+          // D. Evaluación del Turno (Para ver si es Falta Injustificada)
+          const assignmentData = allAssignments.find(
+            (a) =>
+              a.userId === worker.id &&
+              targetDate >= a.validFrom &&
+              (!a.validUntil || targetDate <= a.validUntil),
+          );
 
+          const activeShiftId = assignmentData
+            ? assignmentData.shiftId
+            : worker.shiftId;
+
+          if (activeShiftId) {
+            const shift = shifts.find((s) => s.id === activeShiftId);
+            if (shift && shift.blocks && shift.blocks.length > 0) {
+              const dateObj = new Date(targetDate + "T12:00:00");
+              const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
+
+              if (!shift.workDays.includes(targetDayId)) continue; // Descanso
+
+              expectedToday++;
+              const block = shift.blocks[0];
+              const [h, m] = block.start.split(":").map(Number);
+              const deadline = h * 60 + m + (shift.toleranceMinutes || 0);
+
+              if (targetDate === todayStr && deadline > maxDeadline)
+                maxDeadline = deadline;
+
+              // Si ya pasó la hora y no llegó
+              if (
+                isPastDate ||
+                (targetDate === todayStr && currentMinutes > deadline)
+              ) {
+                faltasInjustificadas++;
                 fullTableData.push({
-                  ...attendanceRecord,
+                  id: `${worker.id}_${targetDate}`,
+                  userId: worker.id,
+                  employeeNumber: worker.employeeNumber || "0000",
+                  date: targetDate,
+                  periods: [phantomPeriod],
+                  status: "ABSENT",
+                  workerName: worker.fullName || "Empleado",
                   department: worker.department,
+                  isJustified: false,
                 });
               }
-            }
-            // 4. No vino en absoluto. ¿Ya se le hizo tarde (HOY) o el día ya pasó (AYER)?
-            // 🌟 CORRECCIÓN: Ahora evaluamos si es una fecha pasada OR (es hoy y ya pasó el tiempo límite)
-            else if (
-              isPastDate ||
-              (targetDate === todayStr && currentMinutes > deadline)
-            ) {
-              faltasInjustificadas++;
-
-              fullTableData.push({
-                id: `${worker.id}_${targetDate}`,
-                userId: worker.id,
-                employeeNumber: worker.employeeNumber || "0000",
-                date: targetDate,
-                periods: [phantomPeriod],
-                status: "ABSENT",
-                workerName: worker.fullName || "Empleado",
-                department: worker.department,
-                isJustified: false,
-              });
             }
           }
         }
       }
 
-      // Solo detenemos el Polling (refresco automático) si el día seleccionado NO es hoy,
-      // o si es hoy y ya pasó el límite máximo del último empleado.
+      fullTableData.sort((a, b) => {
+        if (a.date > b.date) return -1;
+        if (a.date < b.date) return 1;
+        return a.workerName.localeCompare(b.workerName);
+      });
+
       const isPollingNeeded =
-        targetDate === todayStr && currentMinutes <= maxDeadline;
+        dateRange.start === todayStr &&
+        dateRange.end === todayStr &&
+        currentMinutes <= maxDeadline;
 
       return {
         totalEmployees: activeWorkers.length,
         expectedToday,
-        totalAbsences: absentUserIds.size,
+        totalAbsences,
         faltasInjustificadas,
         isPollingNeeded,
         fullTableData,

@@ -10,4 +10,5 @@ export interface ShiftRepository {
     userId: string,
     targetDate: string,
   ): Promise<ShiftAssignment | null>;
+  getAllAssignments(): Promise<ShiftAssignment[]>;
 }

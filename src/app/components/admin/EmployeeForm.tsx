@@ -6,6 +6,7 @@ import {
   Briefcase,
   Calendar,
   Phone,
+  ScanBarcode, // 🌟 Ícono para el Badge
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import {
@@ -22,12 +23,13 @@ export interface EmployeeFormData {
   id?: string;
   empNo?: string;
   fullName: string;
-  email: string;
-  phone: string;
+  email?: string; // Ahora es opcional
+  phone?: string; // Ahora es opcional
   department: string;
   position: string;
   selectedShiftId: string;
   validFrom: string;
+  badgeId: string; // 🌟 NUEVO Y OBLIGATORIO
 }
 
 interface EmployeeFormProps {
@@ -48,6 +50,7 @@ export default function EmployeeForm({
 
   const [empNo] = useState(initialData?.employeeNumber || "");
   const [fullName, setFullName] = useState(initialData?.fullName || "");
+  const [badgeId, setBadgeId] = useState(initialData?.badgeId || ""); // 🌟 ESTADO DEL BADGE
   const [email, setEmail] = useState(initialData?.email || "");
   const [phone, setPhone] = useState(initialData?.phone || "");
   const [department, setDepartment] = useState(initialData?.department || "");
@@ -59,7 +62,6 @@ export default function EmployeeForm({
     new Date().toLocaleDateString("en-CA"),
   );
 
-  // 🌟 ESTADO DE ERRORES
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const schoolDepartments = stringsToSelectOptions(SCHOOL_DEPARTMENTS);
@@ -69,10 +71,8 @@ export default function EmployeeForm({
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!fullName.trim()) newErrors.fullName = "El nombre es obligatorio.";
-    if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email))
-      newErrors.email = "Ingresa un correo válido.";
-    if (!phone.trim() || phone.length < 10)
-      newErrors.phone = "Ingresa un teléfono válido de 10 dígitos.";
+    if (!badgeId.trim())
+      newErrors.badgeId = "El código del gafete es obligatorio.";
     if (!department) newErrors.department = "Selecciona un área.";
     if (!position) newErrors.position = "Selecciona un puesto.";
     if (selectedShiftId && !validFrom)
@@ -95,6 +95,7 @@ export default function EmployeeForm({
         id: initialData?.id,
         empNo,
         fullName,
+        badgeId,
         email,
         phone,
         department,
@@ -143,68 +144,70 @@ export default function EmployeeForm({
             )}
           </div>
 
-          {isEditing && (
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1.5">
-                No. Empleado
-              </label>
-              <input
-                type="text"
-                value={empNo}
-                disabled
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg outline-none text-sm font-mono bg-slate-50 text-slate-400"
-              />
-            </div>
-          )}
-
+          {/* 🌟 INPUT DEL GAFETE */}
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Correo (Usuario) <span className="text-rose-500">*</span>
+              ID del Gafete Físico <span className="text-rose-500">*</span>
             </label>
-            <input
-              type="email"
-              required
-              disabled={isEditing}
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                clearError("email");
-              }}
-              className={`w-full px-3 py-2 border rounded-lg outline-none text-sm font-light disabled:bg-slate-50 disabled:text-slate-400 ${errors.email ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
-            />
-            {errors.email && (
+            <div className="relative">
+              <ScanBarcode
+                size={16}
+                className={`absolute left-3 top-1/2 -translate-y-1/2 ${errors.badgeId ? "text-rose-400" : "text-slate-400"}`}
+              />
+              <input
+                type="text"
+                required
+                value={badgeId}
+                onChange={(e) => {
+                  setBadgeId(e.target.value);
+                  clearError("badgeId");
+                }}
+                placeholder="Escanea el gafete aquí..."
+                className={`w-full pl-9 pr-3 py-2 border rounded-lg outline-none text-sm font-light ${errors.badgeId ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
+              />
+            </div>
+            {errors.badgeId ? (
               <p className="text-[11px] text-rose-500 mt-1 pl-1">
-                {errors.email}
+                {errors.badgeId}
+              </p>
+            ) : (
+              <p className="text-[10px] text-slate-400 mt-1 pl-1">
+                Haz clic en el campo y pasa el gafete por el lector.
               </p>
             )}
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">
-              Teléfono (WhatsApp) <span className="text-rose-500">*</span>
+              Correo Electrónico{" "}
+              <span className="text-slate-400 font-normal">(Opcional)</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">
+              Teléfono / WhatsApp{" "}
+              <span className="text-slate-400 font-normal">(Opcional)</span>
             </label>
             <div className="relative">
               <Phone
                 size={16}
-                className={`absolute left-3 top-1/2 -translate-y-1/2 ${errors.phone ? "text-rose-400" : "text-slate-400"}`}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"
               />
               <input
                 type="tel"
-                required
                 value={phone}
-                onChange={(e) => {
-                  setPhone(e.target.value);
-                  clearError("phone");
-                }}
+                onChange={(e) => setPhone(e.target.value)}
                 placeholder="10 dígitos"
-                className={`w-full pl-9 pr-3 py-2 border rounded-lg outline-none text-sm font-light ${errors.phone ? "border-rose-500 ring-1 ring-rose-500/50 bg-rose-50/10" : "border-slate-200 focus:ring-1 focus:ring-blue-500"}`}
+                className="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none text-sm font-light"
               />
             </div>
-            {errors.phone && (
-              <p className="text-[11px] text-rose-500 mt-1 pl-1">
-                {errors.phone}
-              </p>
-            )}
           </div>
         </div>
       </div>

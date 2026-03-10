@@ -7,6 +7,7 @@ import {
   query,
   where,
   writeBatch,
+  deleteDoc, // 🌟 AÑADIMOS deleteDoc
 } from "firebase/firestore";
 import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
 import type { Absence, AbsenceType } from "../../domain/models/Absence";
@@ -46,14 +47,12 @@ export class FirebaseAbsenceRepository implements AbsenceRepository {
   }
 
   async countAbsencesByDate(date: string): Promise<number> {
-    // Traemos los permisos que empezaron HOY o ANTES de hoy
     const q = query(collection(db, "absences"), where("startDate", "<=", date));
     const snap = await getDocs(q);
 
     let count = 0;
     snap.forEach((doc) => {
       const data = doc.data();
-      // Y en JavaScript validamos que terminen HOY o DESPUÉS de hoy
       if (!data.endDate || data.endDate >= date) {
         count++;
       }
@@ -63,18 +62,37 @@ export class FirebaseAbsenceRepository implements AbsenceRepository {
   }
 
   async getAbsencesByDate(date: string): Promise<Absence[]> {
-    // Buscamos permisos que empezaron hoy o ANTES de hoy
     const q = query(collection(db, "absences"), where("startDate", "<=", date));
     const snap = await getDocs(q);
 
     const absences: Absence[] = [];
     snap.forEach((doc) => {
       const data = doc.data();
-      // Validamos que termine hoy o DESPUÉS de hoy
       if (!data.endDate || data.endDate >= date) {
         absences.push({ id: doc.id, ...data } as Absence);
       }
     });
     return absences;
+  }
+
+  async getAbsencesByDateRange(
+    startDate: string,
+    endDate: string,
+  ): Promise<Absence[]> {
+    const snap = await getDocs(collection(db, "absences"));
+    return snap.docs
+      .map((doc) => doc.data() as Absence)
+      .filter((a) => a.startDate <= endDate && a.endDate >= startDate);
+  }
+
+  // 🌟 MÉTODOS NUEVOS IMPLEMENTADOS
+  async getAllAbsences(): Promise<Absence[]> {
+    const snap = await getDocs(collection(db, "absences"));
+    return snap.docs.map((doc) => doc.data() as Absence);
+  }
+
+  async deleteAbsence(id: string): Promise<void> {
+    const docRef = doc(db, "absences", id);
+    await deleteDoc(docRef);
   }
 }

@@ -7,14 +7,34 @@ import {
   LogOut,
   LogIn,
 } from "lucide-react";
+
+// --- INFRAESTRUCTURA ---
 import { FirebaseAttendanceRepository } from "../../infrastructure/repositories/FirebaseAttendanceRepository";
+import { FirebaseEmployeeRepository } from "../../infrastructure/repositories/FirebaseEmployeeRepository";
+import { FirebaseShiftRepository } from "../../infrastructure/repositories/FirebaseShiftRepository";
+import { FirebaseCalendarRepository } from "../../infrastructure/repositories/FirebaseCalendarRepository";
+import { FirebaseAbsenceRepository } from "../../infrastructure/repositories/FirebaseAbsenceRepository";
+
+// --- CASO DE USO ---
 import { ProcessAttendanceScan } from "../../application/use-cases/ProcessAttendance";
+import { useAuth } from "../context/AuthContext";
 
 type ScanStatus = "idle" | "loading" | "success" | "error";
 
-// Inicializamos el "Cerebro"
+// 🚀 Inicializamos las instancias (Limpieza Arquitectónica)
 const attendanceRepo = new FirebaseAttendanceRepository();
-const processScanUseCase = new ProcessAttendanceScan(attendanceRepo);
+const employeeRepo = new FirebaseEmployeeRepository();
+const shiftRepo = new FirebaseShiftRepository();
+const calendarRepo = new FirebaseCalendarRepository();
+const absenceRepo = new FirebaseAbsenceRepository();
+
+const processScanUseCase = new ProcessAttendanceScan(
+  employeeRepo,
+  attendanceRepo,
+  shiftRepo,
+  calendarRepo,
+  absenceRepo,
+);
 
 export default function Scanner() {
   const [status, setStatus] = useState<ScanStatus>("idle");
@@ -31,7 +51,8 @@ export default function Scanner() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Mantiene el "foco" en el input oculto para que el escáner de pistola siempre funcione
+  const { logout } = useAuth();
+
   useEffect(() => {
     const focusInput = () => {
       if (inputRef.current && status === "idle") {
@@ -50,12 +71,12 @@ export default function Scanner() {
     setStatus("loading");
     setMessage("Verificando identidad...");
 
-    const qrCode = scannedValue.trim();
-    setScannedValue(""); // Limpiamos rápido para el siguiente maestro
+    const badgeId = scannedValue.trim();
+    setScannedValue("");
 
     try {
-      // AQUÍ OCURRE LA MAGIA
-      const result = await processScanUseCase.execute(qrCode);
+      // 🌟 LLAMADA AL CASO DE USO LIMPIO
+      const result = await processScanUseCase.execute(badgeId);
 
       setStatus("success");
       setMessage(
@@ -68,12 +89,9 @@ export default function Scanner() {
         time: result.time,
         isLate: result.isLate,
         type: result.type as "ENTRY" | "EXIT",
-        skippedBlocks: (result as Record<string, unknown>).skippedBlocks as
-          | number
-          | undefined,
+        skippedBlocks: result.skippedBlocks,
       });
 
-      // Después de 3.5 segundos, la pantalla vuelve a la normalidad
       setTimeout(() => {
         setStatus("idle");
         setMessage("Esperando escaneo...");
@@ -96,7 +114,6 @@ export default function Scanner() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6 selection:bg-transparent">
-      {/* INPUT OCULTO PARA EL ESCÁNER FÍSICO */}
       <form
         onSubmit={handleScanSubmit}
         className="absolute opacity-0 pointer-events-none"
@@ -112,7 +129,6 @@ export default function Scanner() {
         <button type="submit">Submit</button>
       </form>
 
-      {/* INTERFAZ DEL KIOSCO */}
       <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-100 overflow-hidden transition-all duration-500">
         <div
           className={`p-8 text-center transition-colors duration-500 flex flex-col items-center justify-center min-h-55 ${
@@ -169,14 +185,13 @@ export default function Scanner() {
 
           {status === "idle" && (
             <p className="text-slate-400 mt-2 text-sm font-medium">
-              Acerca tu código QR al escáner
+              Acerca tu Gafete al lector
             </p>
           )}
         </div>
 
-        {/* DETALLES DEL EMPLEADO (Solo visible en éxito) */}
         <div
-          className={`transition-all duration-500 ease-in-out overflow-hidden ${status === "success" ? "max-h-48 opacity-100" : "max-h-0 opacity-0"}`}
+          className={`transition-all duration-500 ease-in-out overflow-hidden ${status === "success" ? "max-h-60 opacity-100" : "max-h-0 opacity-0"}`}
         >
           {employeeInfo && (
             <div className="p-6 border-t border-slate-100 bg-white">
@@ -201,7 +216,8 @@ export default function Scanner() {
                   <XCircle size={16} /> Registrado con retardo
                 </div>
               )}
-              {employeeInfo.skippedBlocks && employeeInfo.skippedBlocks > 0 ? (
+              {employeeInfo.skippedBlocks !== undefined &&
+              employeeInfo.skippedBlocks > 0 ? (
                 <div className="bg-rose-50 text-rose-700 px-4 py-2.5 rounded-lg text-sm font-semibold border border-rose-200 flex items-center gap-2 mt-2">
                   <XCircle size={16} /> Falta registrada en{" "}
                   {employeeInfo.skippedBlocks} bloque(s) anterior(es).
@@ -215,6 +231,13 @@ export default function Scanner() {
       <div className="mt-8 text-slate-400 text-sm font-medium uppercase tracking-widest">
         Sistema de Control de Asistencia
       </div>
+      <button
+        onClick={logout}
+        className="absolute top-6 right-6 p-2 text-slate-400 hover:text-rose-500 transition-colors"
+        title="Cerrar sesión de terminal"
+      >
+        <LogOut size={20} />
+      </button>
     </div>
   );
 }
