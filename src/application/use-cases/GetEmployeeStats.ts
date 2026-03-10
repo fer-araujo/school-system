@@ -156,13 +156,13 @@ export class GetEmployeeStats {
 
         if (activeShiftId) {
           const shift = shifts.find((s) => s.id === activeShiftId);
-          if (shift && shift.blocks && shift.blocks.length > 0) {
-            const dateObj = new Date(targetDate + "T12:00:00");
-            const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
+          const dateObj = new Date(targetDate + "T12:00:00");
+          const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
+          if (shift && shift.blocksByDay[targetDayId] && shift.blocksByDay[targetDayId].length > 0) {
 
             if (!shift.workDays.includes(targetDayId)) continue; // Día de descanso
 
-            const block = shift.blocks[0];
+            const block = shift.blocksByDay[targetDayId][0];
             const [h, m] = block.start.split(":").map(Number);
             const deadline = h * 60 + m + (shift.toleranceMinutes || 0);
 
