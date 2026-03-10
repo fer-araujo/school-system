@@ -1,64 +1,62 @@
-// src/application/use-cases/ManageAbsences.ts
-import {
-  collection,
-  getDocs,
-  doc,
-  setDoc,
-  deleteDoc,
-  updateDoc,
-} from "firebase/firestore";
-import { db } from "../../infrastructure/firebase/config";
+import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
+import type { EmployeeRepository } from "../../domain/repositories/EmployeeRepository";
 import type { Absence } from "../../domain/models/Absence";
-import type { User } from "../../domain/models/User";
 
 export class ManageAbsences {
-  // Obtiene todos los permisos y les inyecta el nombre del maestro
+  private absenceRepo: AbsenceRepository;
+  private employeeRepo: EmployeeRepository;
+  constructor(
+    absenceRepo: AbsenceRepository,
+    employeeRepo: EmployeeRepository,
+  ) {
+    this.absenceRepo = absenceRepo;
+    this.employeeRepo = employeeRepo;
+  }
+
   async getAllAbsences(): Promise<Absence[]> {
-    // 1. Traemos los usuarios para el "Diccionario"
-    const usersSnap = await getDocs(collection(db, "users"));
+    // 1. Descargamos usando Repositorios puros
+    const [workers, absences] = await Promise.all([
+      this.employeeRepo.getAllWorkers(),
+      this.absenceRepo.getAllAbsences(), // 🌟 OJO: Asegúrate de tener este método en tu FirebaseAbsenceRepository
+    ]);
+
     const userMap = new Map<string, string>();
-    usersSnap.forEach((doc) => {
-      const user = doc.data() as User;
-      userMap.set(user.id, user.fullName);
-    });
+    workers.forEach((w) => userMap.set(w.id, w.fullName));
 
-    // 2. Traemos las ausencias
-    const absencesSnap = await getDocs(collection(db, "absences"));
-    const absences = absencesSnap.docs.map((doc) => {
-      const data = doc.data() as Absence;
-      return {
-        ...data,
-        employeeName: userMap.get(data.userId) || "Empleado Eliminado",
-      };
-    });
+    // 2. Mapeamos y ordenamos en memoria
+    const enrichedAbsences = absences.map((a) => ({
+      ...a,
+      employeeName: userMap.get(a.userId) || "Empleado Eliminado o Inactivo",
+    }));
 
-    // 3. Ordenamos por fecha de inicio (las más recientes primero)
-    return absences.sort((a, b) => b.startDate.localeCompare(a.startDate));
+    return enrichedAbsences.sort((a, b) =>
+      b.startDate.localeCompare(a.startDate),
+    );
   }
 
   async createAbsence(
     data: Omit<Absence, "id" | "employeeName">,
   ): Promise<void> {
     const newId = `abs_${Date.now()}`;
-    await setDoc(doc(db, "absences", newId), { ...data, id: newId });
+    await this.absenceRepo.saveAbsences([{ ...data, id: newId } as Absence]);
   }
 
   async updateAbsence(data: Absence): Promise<void> {
-    const ref = doc(db, "absences", data.id);
-
-    // Armamos el objeto explícitamente sin el employeeName para que el linter sea feliz
+    // Omitimos enviar employeeName al repositorio base
     const cleanData = {
+      id: data.id,
       userId: data.userId,
       type: data.type,
       startDate: data.startDate,
       endDate: data.endDate,
       notes: data.notes,
-    };
+    } as Absence;
 
-    await updateDoc(ref, cleanData);
+    await this.absenceRepo.saveAbsences([cleanData]);
   }
 
   async deleteAbsence(id: string): Promise<void> {
-    await deleteDoc(doc(db, "absences", id));
+    // 🌟 OJO: Añade deleteAbsence(id: string): Promise<void> en tu AbsenceRepository si no lo tienes
+    await this.absenceRepo.deleteAbsence(id);
   }
 }
