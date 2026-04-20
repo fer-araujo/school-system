@@ -8,8 +8,10 @@ import type {
 import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 
+// 🌟 1. AGREGAMOS shiftName A LA INTERFAZ
 export interface DashboardTableRecord extends AttendanceWithWorker {
   department?: string;
+  shiftName?: string;
   isJustified?: boolean;
   absenceReason?: string;
 }
@@ -37,7 +39,6 @@ export class GetDashboardStats {
     currentAttendances: AttendanceWithWorker[],
   ) {
     try {
-      // 🚀 BULK FETCH: Traemos TODO
       const [allWorkers, shifts, allAssignments, allAbsences, allHolidays] =
         await Promise.all([
           this.manageEmployees.getAllWorkers(),
@@ -47,7 +48,7 @@ export class GetDashboardStats {
             dateRange.start,
             dateRange.end,
           ),
-          this.calendarRepo.getAllHolidays(), // 🌟 TRAEMOS FESTIVOS
+          this.calendarRepo.getAllHolidays(),
         ]);
 
       const activeWorkers = allWorkers.filter((w) => w.isActive);
@@ -81,8 +82,6 @@ export class GetDashboardStats {
       for (let i = 0; i < dates.length; i++) {
         const targetDate = dates[i];
         const isPastDate = targetDate < todayStr;
-
-        // 🌟 VERIFICAMOS SI HOY ES FESTIVO
         const isHoliday = allHolidays.find((h) => h.date === targetDate);
 
         const attendancesForDate = currentAttendances.filter(
@@ -93,7 +92,23 @@ export class GetDashboardStats {
         );
 
         for (const worker of activeWorkers) {
-          // A. ¿Asistió a pesar del festivo/permiso? (Prioridad 1)
+          // 🌟 2. RESOLVEMOS EL TURNO PRIMERO PARA PODER USAR SU NOMBRE EN TODAS PARTES
+          const assignmentData = allAssignments.find(
+            (a) =>
+              a.userId === worker.id &&
+              targetDate >= a.validFrom &&
+              (!a.validUntil || targetDate <= a.validUntil),
+          );
+
+          const activeShiftId = assignmentData
+            ? assignmentData.shiftId
+            : worker.shiftId;
+          const shift = activeShiftId
+            ? shifts.find((s) => s.id === activeShiftId)
+            : undefined;
+          const currentShiftName = shift ? shift.name : "Sin Turno";
+
+          // A. ¿Asistió a pesar del festivo/permiso?
           if (attendedUserIds.has(worker.id)) {
             const attendanceRecord = attendancesForDate.find(
               (a) => a.userId === worker.id,
@@ -105,19 +120,16 @@ export class GetDashboardStats {
               fullTableData.push({
                 ...attendanceRecord,
                 department: worker.department,
+                shiftName: currentShiftName, // 🌟 INYECTAMOS EL TURNO
               });
             }
             continue;
           }
 
-          // B. ¿Es Día Festivo? (Prioridad 2)
-          if (isHoliday) {
-            // No hacemos nada en la tabla del dashboard para no llenarla de registros vacíos,
-            // simplemente saltamos a este empleado para no ponerle falta.
-            continue;
-          }
+          // B. ¿Es Día Festivo?
+          if (isHoliday) continue;
 
-          // C. ¿Falta Justificada? (Prioridad 3)
+          // C. ¿Falta Justificada?
           const absenceDetail = allAbsences.find(
             (a) =>
               a.userId === worker.id &&
@@ -136,35 +148,23 @@ export class GetDashboardStats {
               status: "ABSENT",
               workerName: worker.fullName || "Empleado",
               department: worker.department,
+              shiftName: currentShiftName, // 🌟 INYECTAMOS EL TURNO
               isJustified: true,
               absenceReason: absenceDetail.type || "Permiso",
             });
             continue;
           }
 
-          // D. Evaluación del Turno (Para ver si es Falta Injustificada)
-          const assignmentData = allAssignments.find(
-            (a) =>
-              a.userId === worker.id &&
-              targetDate >= a.validFrom &&
-              (!a.validUntil || targetDate <= a.validUntil),
-          );
-
-          const activeShiftId = assignmentData
-            ? assignmentData.shiftId
-            : worker.shiftId;
-
-          if (activeShiftId) {
-            const shift = shifts.find((s) => s.id === activeShiftId);
+          // D. Evaluación de Falta Injustificada
+          if (shift) {
             const dateObj = new Date(targetDate + "T12:00:00");
             const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
-            if (
-              shift &&
-              shift.blocksByDay &&
-              shift.blocksByDay[targetDayId]?.length > 0
-            ) {
-              if (!shift.workDays.includes(targetDayId)) continue; // Descanso
 
+            if (
+              shift.blocksByDay &&
+              shift.blocksByDay[targetDayId]?.length > 0 &&
+              shift.workDays.includes(targetDayId)
+            ) {
               expectedToday++;
               const block = shift.blocksByDay[targetDayId][0];
               const [h, m] = block.start.split(":").map(Number);
@@ -173,7 +173,6 @@ export class GetDashboardStats {
               if (targetDate === todayStr && deadline > maxDeadline)
                 maxDeadline = deadline;
 
-              // Si ya pasó la hora y no llegó
               if (
                 isPastDate ||
                 (targetDate === todayStr && currentMinutes > deadline)
@@ -188,6 +187,7 @@ export class GetDashboardStats {
                   status: "ABSENT",
                   workerName: worker.fullName || "Empleado",
                   department: worker.department,
+                  shiftName: currentShiftName, // 🌟 INYECTAMOS EL TURNO
                   isJustified: false,
                 });
               }

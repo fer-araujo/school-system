@@ -2,6 +2,8 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "./context/AuthContext";
 import { Toaster } from "react-hot-toast";
+// 🌟 1. CORRECCIÓN: Importamos de /react, no de /next
+import { Analytics } from "@vercel/analytics/react";
 
 import Sidebar from "./components/ui/Sidebar";
 import Login from "./pages/Login";
@@ -38,9 +40,12 @@ export default function App() {
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <>
+        <Routes>
+          <Route path="*" element={<Login />} />
+        </Routes>
+        <Analytics />
+      </>
     );
   }
 
@@ -55,6 +60,7 @@ export default function App() {
           <Route path="/scanner" element={<Scanner />} />
           <Route path="*" element={<Navigate to="/scanner" replace />} />
         </Routes>
+        <Analytics />
       </>
     );
   }
@@ -86,6 +92,7 @@ export default function App() {
           />
         </Routes>
       </MainLayout>
+      <Analytics />
     </>
   );
 }

@@ -106,7 +106,7 @@ export default function DataTable<T>({
                   {columns.map((col, index) => (
                     <th
                       key={index}
-                      className={`p-4 whitespace-nowrap ${col.className || ""} capitalize font-semibold text-sm text-slate-700/80`}
+                      className={`py-4 px-2 whitespace-nowrap ${col.className || ""} capitalize font-semibold text-sm text-slate-700/80`}
                     >
                       {col.sortable ? (
                         <button
@@ -131,7 +131,7 @@ export default function DataTable<T>({
                     {columns.map((col, colIndex) => (
                       <td
                         key={colIndex}
-                        className={`p-4 align-middle whitespace-nowrap ${col.className || ""}`}
+                        className={`py-4 px-2 align-middle whitespace-nowrap ${col.className || ""}`}
                       >
                         {col.cell
                           ? col.cell(row)

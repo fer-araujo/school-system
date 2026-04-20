@@ -30,7 +30,7 @@ import type { WorkPeriod } from "../../domain/models/User";
 import { exportAdminOverviewToCSV } from "../../utils/CSVfunctions";
 
 // 🌟 NUEVOS COMPONENTES EXTRAÍDOS
-import DepartmentFilterPills from "../components/ui/DepartmentFilterPills";
+import ShiftFilterPills from "../components/ui/ShiftFilterPills";
 import EmployeeDetailModal from "../components/admin/EmployeeDetailModal";
 
 const employeeRepo = new FirebaseEmployeeRepository();
@@ -52,7 +52,8 @@ export interface GroupedEmployeeRecord {
   userId: string;
   workerName: string;
   employeeNumber: string;
-  department: string;
+  department?: string;
+  shiftName: string;
   totalAttendances: number;
   expectedAttendances: number;
   totalLates: number;
@@ -67,7 +68,8 @@ export default function AdminOverview() {
     end: new Date().toLocaleDateString("en-CA"),
   });
 
-  const [selectedDepartment, setSelectedDepartment] = useState<string>("Todos");
+  const [selectedShift, setSelectedShift] = useState<string>("Todos");
+  const [availableShifts, setAvailableShifts] = useState<string[]>(["Todos"]);
   const [records, setRecords] = useState<DashboardTableRecord[]>([]);
   const [tableData, setTableData] = useState<DashboardTableRecord[]>([]);
   const [isFetchingNetwork, setIsFetchingNetwork] = useState(true);
@@ -125,10 +127,21 @@ export default function AdminOverview() {
     };
   }, [dateRange, records, isFetchingNetwork]);
 
-  const departments = useMemo(() => {
-    const deps = new Set(tableData.map((r) => r.department || "General"));
-    return ["Todos", ...Array.from(deps)];
-  }, [tableData]);
+  useEffect(() => {
+    const fetchAllShifts = async () => {
+      try {
+        const shifts = await shiftRepo.getAllShifts();
+        // Extraemos los nombres únicos y los ordenamos alfabéticamente (opcional)
+        const shiftNames = Array.from(
+          new Set(shifts.map((s) => s.name)),
+        ).sort();
+        setAvailableShifts(["Todos", ...shiftNames]);
+      } catch (error) {
+        console.error("Error cargando los turnos para los filtros", error);
+      }
+    };
+    fetchAllShifts();
+  }, []);
 
   const groupedAndFilteredData = useMemo(() => {
     const groupedMap = new Map<string, GroupedEmployeeRecord>();
@@ -140,7 +153,8 @@ export default function AdminOverview() {
           userId: record.userId,
           workerName: record.workerName,
           employeeNumber: record.employeeNumber,
-          department: record.department || "General",
+          department: record.department,
+          shiftName: record.shiftName || "Sin Turno", // 🌟 GUARDAMOS EL TURNO
           totalAttendances: 0,
           expectedAttendances: 0,
           totalLates: 0,
@@ -167,11 +181,12 @@ export default function AdminOverview() {
       return emp;
     });
 
-    if (selectedDepartment !== "Todos") {
-      result = result.filter((emp) => emp.department === selectedDepartment);
+    // 🌟 FILTRAMOS POR TURNO EN LUGAR DE DEPARTAMENTO
+    if (selectedShift !== "Todos") {
+      result = result.filter((emp) => emp.shiftName === selectedShift);
     }
     return result.sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [tableData, selectedDepartment]);
+  }, [tableData, selectedShift]);
 
   const handleOpenDetail = (emp: GroupedEmployeeRecord) => {
     setSelectedEmployeeDetail(emp);
@@ -184,7 +199,7 @@ export default function AdminOverview() {
         header: "Empleado",
         sortable: true,
         accessorKey: "workerName",
-        className: "pl-6 w-[22%]",
+        className: "pl-6 w-[22%] min-w-[195px]",
         cell: (row) => {
           const colorClass = getAvatarColor(row.workerName);
           return (
@@ -195,7 +210,7 @@ export default function AdminOverview() {
                 {row.workerName.charAt(0).toUpperCase()}
               </div>
               <div className="flex flex-col min-w-0">
-                <span className="font-medium text-slate-800 text-[13px] truncate">
+                <span className="font-medium text-slate-800 text-[13px] whitespace-normal line-clamp-2 leading-tight">
                   {row.workerName}
                 </span>
                 <span className="text-[11px] text-slate-400 font-normal">
@@ -208,7 +223,7 @@ export default function AdminOverview() {
       },
       {
         header: isSingleDay ? "Fecha" : "Rango",
-        className: "w-[12%]",
+        className: "w-[8%]",
         cell: () => {
           const startDate = new Date(
             dateRange.start + "T12:00:00",
@@ -217,7 +232,7 @@ export default function AdminOverview() {
             dateRange.end + "T12:00:00",
           ).toLocaleDateString("es-MX", { day: "numeric", month: "short" });
           return (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-start gap-1.5">
               <CalendarIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
               <span className="text-slate-600 text-[11px] font-medium capitalize whitespace-nowrap">
                 {isSingleDay ? startDate : `${startDate} - ${endDate}`}
@@ -230,11 +245,22 @@ export default function AdminOverview() {
         header: "Departamento",
         sortable: true,
         accessorKey: "department",
-        className: "w-[16%]",
         cell: (row) => (
-          <div className="w-full flex justify-start">
-            <span className="inline-flex text-center px-2 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100/60 leading-[1.2] whitespace-normal wrap-break-word max-w-30">
+          <div className="flex justify-start px-4">
+            <span className="inline-flex text-center px-2 py-1 rounded-md text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200/60 leading-[1.2] whitespace-normal wrap-break-word ">
               {row.department}
+            </span>
+          </div>
+        ),
+      },
+      {
+        header: "Turno Asignado",
+        sortable: true,
+        accessorKey: "shiftName",
+        cell: (row) => (
+          <div className="flex justify-start px-4">
+            <span className="inline-flex text-center px-2 py-1 rounded-md text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-100/60 leading-[1.2] whitespace-normal wrap-break-word ">
+              {row.shiftName}
             </span>
           </div>
         ),
@@ -245,7 +271,7 @@ export default function AdminOverview() {
       cols.push({
         header: "Actividad (Entrada ➔ Salida)",
         sortable: false,
-        className: "w-[22%]",
+        className: "w-[20%]",
         cell: (row) => {
           const todayRecord = row.dailyRecords[0];
           if (!todayRecord) return null;
@@ -259,7 +285,6 @@ export default function AdminOverview() {
                     key={i}
                     className="flex items-center text-[12px] font-medium w-fit"
                   >
-                    {/* 🌟 AQUÍ ESTÁ EL BADGE DE FALTA MEJORADO Y MÁS GRANDE */}
                     {isMissing ? (
                       <div className="flex items-center justify-start">
                         {todayRecord.isJustified ? (
@@ -306,9 +331,8 @@ export default function AdminOverview() {
         header: "Total Asist.",
         sortable: true,
         accessorKey: "totalAttendances",
-        className: "text-center w-[10%]",
         cell: (row) => (
-          <div className="flex flex-col items-center justify-center">
+          <div className="flex flex-col items-start justify-center px-5">
             <span className="text-blue-600 text-[13px] font-semibold">
               {row.totalAttendances} / {row.expectedAttendances}
             </span>
@@ -324,7 +348,7 @@ export default function AdminOverview() {
         header: "Total Faltas",
         sortable: true,
         accessorKey: "totalUnjustified",
-        className: "text-center w-[10%]",
+        className: "text-center",
         cell: (row) => (
           <span
             className={`text-[13px] font-semibold ${row.totalUnjustified > 0 ? "text-rose-600" : "text-slate-400"}`}
@@ -337,7 +361,7 @@ export default function AdminOverview() {
         header: "Permisos",
         sortable: true,
         accessorKey: "totalPermissions",
-        className: "text-center w-[10%]",
+        className: "text-center",
         cell: (row) => (
           <span className="text-slate-500 text-[13px] font-normal">
             {row.totalPermissions > 0 ? row.totalPermissions : "-"}
@@ -349,7 +373,7 @@ export default function AdminOverview() {
     if (!isSingleDay) {
       cols.push({
         header: "Acciones",
-        className: "w-[8%] text-center pr-6",
+        className: "text-center pr-6",
         cell: (row) => (
           <button
             onClick={() => handleOpenDetail(row)}
@@ -491,11 +515,10 @@ export default function AdminOverview() {
             Actividad Filtrada
           </h3>
 
-          {/* 🌟 AQUÍ LLAMAMOS AL COMPONENTE EXTRAÍDO */}
-          <DepartmentFilterPills
-            departments={departments}
-            selectedDepartment={selectedDepartment}
-            onSelect={setSelectedDepartment}
+          <ShiftFilterPills
+            shiftsList={availableShifts}
+            selectedShift={selectedShift}
+            onSelect={setSelectedShift}
           />
         </div>
 
