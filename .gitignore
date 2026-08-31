@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .env
+# Tool artifacts
+graphify-out/
+.atl/
