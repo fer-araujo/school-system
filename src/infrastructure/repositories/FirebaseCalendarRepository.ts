@@ -5,19 +5,33 @@ import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
   getDocs,
-  orderBy,
+  limit,
   query,
   setDoc,
   updateDoc,
   where,
+  type DocumentData,
 } from "firebase/firestore";
+
+// Single collection for holidays. Reads and writes must never diverge:
+// the scanner and the admin panel have to see the same data.
+const HOLIDAYS = "holidays";
+
+function toHoliday(id: string, data: DocumentData): Holiday {
+  return {
+    id,
+    date: data.date,
+    // `reason` kept as a fallback for documents written before the rename.
+    name: data.name || data.reason || "Día de asueto",
+    type: data.type || "Oficial (Ley)",
+  };
+}
 
 export class FirebaseCalendarRepository implements CalendarRepository {
   async getAllHolidays(): Promise<Holiday[]> {
-    const snap = await getDocs(collection(db, "holidays"));
-    const holidays = snap.docs.map((doc) => doc.data() as Holiday);
+    const snap = await getDocs(collection(db, HOLIDAYS));
+    const holidays = snap.docs.map((d) => toHoliday(d.id, d.data()));
     return holidays.sort((a, b) => a.date.localeCompare(b.date));
   }
 
@@ -26,57 +40,29 @@ export class FirebaseCalendarRepository implements CalendarRepository {
   }
 
   async getHolidayByDate(date: string): Promise<Holiday | null> {
-    // Buscamos un documento cuyo ID sea exactamente la fecha (ej: "2026-03-20")
-    const docRef = doc(db, "calendar", date);
-    const snap = await getDoc(docRef);
+    const q = query(
+      collection(db, HOLIDAYS),
+      where("date", "==", date),
+      limit(1),
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return null;
 
-    if (!snap.exists()) {
-      return null;
-    }
-
-    const data = snap.data();
-
-    // Mapeo estricto para cumplir con TypeScript
-    return {
-      id: snap.id, // Agregamos el id (si lo requiere tu interfaz)
-      date: data.date || snap.id,
-      name: data.name || data.reason || "Día de asueto", // Cambiamos 'reason' por 'name' (dejamos data.reason por si hay datos viejos en BD)
-      type: data.type || "Oficial (Ley)", // Actualizamos el fallback al tipo que usas ahora
-    };
+    const found = snap.docs[0];
+    return toHoliday(found.id, found.data());
   }
 
   async createHoliday(data: Omit<Holiday, "id">): Promise<void> {
     const newId = `hol_${Date.now()}`;
-    await setDoc(doc(db, "holidays", newId), { ...data, id: newId });
-  }
-
-  async saveHoliday(holiday: Holiday): Promise<void> {
-    const docRef = doc(db, "calendar", holiday.date);
-    await setDoc(docRef, holiday); // Firebase creará la colección si no existe
-  }
-
-  // TRAE SOLO LOS ASUETOS DE HOY EN ADELANTE
-  async getUpcomingHolidays(): Promise<Holiday[]> {
-    const today = new Date().toLocaleDateString("en-CA");
-
-    // Traemos fechas mayores o iguales a hoy, ordenadas cronológicamente
-    const q = query(
-      collection(db, "calendar"),
-      where("date", ">=", today),
-      orderBy("date", "asc"),
-    );
-
-    const snap = await getDocs(q);
-    return snap.docs.map((doc) => doc.data() as Holiday);
+    await setDoc(doc(db, HOLIDAYS, newId), { ...data, id: newId });
   }
 
   async updateHoliday(data: Holiday): Promise<void> {
-    const ref = doc(db, "holidays", data.id);
+    const ref = doc(db, HOLIDAYS, data.id);
     await updateDoc(ref, { ...data });
   }
 
-  async deleteHoliday(date: string): Promise<void> {
-    const docRef = doc(db, "calendar", date);
-    await deleteDoc(docRef);
+  async deleteHoliday(id: string): Promise<void> {
+    await deleteDoc(doc(db, HOLIDAYS, id));
   }
 }
