@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "migrate:departments": "node --experimental-strip-types scripts/migrations/rename-departments.ts"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.2.1",
@@ -41,6 +42,7 @@
     "eslint": "^9.39.5",
     "eslint-plugin-react-hooks": "~7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
+    "firebase-admin": "^14.3.0",
     "globals": "^16.5.0",
     "jsdom": "^30.0.1",
     "typescript": "~5.9.3",

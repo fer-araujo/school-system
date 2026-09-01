@@ -27,3 +27,7 @@ dist-ssr
 # Tool artifacts
 graphify-out/
 .atl/
+
+# Firebase admin service account (never commit)
+serviceAccount*.json
+*-firebase-adminsdk-*.json

@@ -22,7 +22,8 @@ export const SCHOOL_POSITIONS = [
 export const SCHOOL_DEPARTMENTS = [
   "Administración / Dirección",
   "Especialidades (Inglés, Música, etc.)",
-  "Servicios Generales (Cocina/Mantenimiento)",
+  "Servicios Generales (Cocina/Mantenimiento/Baños)",
+  "Niñera General",
   "Lactantes (Único)",
   "Maternal A1",
   "Maternal A2",
