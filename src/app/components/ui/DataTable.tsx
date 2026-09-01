@@ -3,6 +3,12 @@ import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import renderSortIcon from "./SortIcon";
 
 export interface ColumnDef<T> {
+  /**
+   * Stable identity for sorting. Without it a column falls back to its
+   * position, so a conditional column appearing or disappearing shifts every
+   * index and moves an active sort onto a different column.
+   */
+  id?: string;
   header: string | ReactNode;
   accessorKey?: keyof T;
   sortable?: boolean;
@@ -10,6 +16,9 @@ export interface ColumnDef<T> {
   cell?: (row: T) => ReactNode;
   className?: string;
 }
+
+const columnKeyOf = <T,>(col: ColumnDef<T>, index: number): string =>
+  col.id ?? String(index);
 
 interface DataTableProps<T> {
   columns: ColumnDef<T>[];
@@ -34,32 +43,38 @@ export default function DataTable<T>({
 
   // --- ESTADOS DE ORDENAMIENTO (SORTING) ---
   const [sortConfig, setSortConfig] = useState<{
-    columnIndex: number | null;
+    columnKey: string | null;
     direction: "asc" | "desc" | null;
-  }>({ columnIndex: null, direction: null });
+  }>({ columnKey: null, direction: null });
 
   // --- LÓGICA DE ORDENAMIENTO ---
-  const handleSort = (index: number, col: ColumnDef<T>) => {
+  const handleSort = (key: string, col: ColumnDef<T>) => {
     if (!col.sortable) return;
 
     let direction: "asc" | "desc" | null = "asc";
-    if (sortConfig.columnIndex === index && sortConfig.direction === "asc") {
+    if (sortConfig.columnKey === key && sortConfig.direction === "asc") {
       direction = "desc";
     } else if (
-      sortConfig.columnIndex === index &&
+      sortConfig.columnKey === key &&
       sortConfig.direction === "desc"
     ) {
       direction = null; // Quita el ordenamiento al 3er clic
     }
 
-    setSortConfig({ columnIndex: direction ? index : null, direction });
+    setSortConfig({ columnKey: direction ? key : null, direction });
   };
 
   // --- ORDENAR LOS DATOS ANTES DE PAGINAR ---
   const sortedData = useMemo(() => {
-    if (sortConfig.columnIndex === null || !sortConfig.direction) return data;
+    if (sortConfig.columnKey === null || !sortConfig.direction) return data;
 
-    const col = columns[sortConfig.columnIndex];
+    const col = columns.find(
+      (c, i) => columnKeyOf(c, i) === sortConfig.columnKey,
+    );
+    // The sorted column is gone (a conditional column was removed), so drop
+    // the sort rather than applying it to whatever now sits in that slot.
+    if (!col) return data;
+
     const sortFn =
       col.sortAccessor ||
       ((row: T) => (col.accessorKey ? row[col.accessorKey] : ""));
@@ -103,23 +118,26 @@ export default function DataTable<T>({
               {/* ADIÓS UPPERCASE Y TEXT-XS. HOLA TEXT-SM Y FONT-SEMIBOLD */}
               <thead className="bg-white/95 backdrop-blur-sm border-b border-slate-100 tracking-wide sticky top-0 z-10 shadow-sm">
                 <tr>
-                  {columns.map((col, index) => (
-                    <th
-                      key={index}
-                      className={`py-4 px-2 whitespace-nowrap ${col.className || ""} capitalize font-semibold text-sm text-slate-700/80`}
-                    >
-                      {col.sortable ? (
-                        <button
-                          onClick={() => handleSort(index, col)}
-                          className="flex items-center gap-1.5 hover:text-slate-800 group transition-colors cursor-pointer focus:outline-none"
-                        >
-                          {col.header} {renderSortIcon(index, sortConfig)}
-                        </button>
-                      ) : (
-                        col.header
-                      )}
-                    </th>
-                  ))}
+                  {columns.map((col, index) => {
+                    const key = columnKeyOf(col, index);
+                    return (
+                      <th
+                        key={key}
+                        className={`py-4 px-2 whitespace-nowrap ${col.className || ""} capitalize font-semibold text-sm text-slate-700/80`}
+                      >
+                        {col.sortable ? (
+                          <button
+                            onClick={() => handleSort(key, col)}
+                            className="flex items-center gap-1.5 hover:text-slate-800 group transition-colors cursor-pointer focus:outline-none"
+                          >
+                            {col.header} {renderSortIcon(key, sortConfig)}
+                          </button>
+                        ) : (
+                          col.header
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100/60 text-sm">
@@ -130,7 +148,7 @@ export default function DataTable<T>({
                   >
                     {columns.map((col, colIndex) => (
                       <td
-                        key={colIndex}
+                        key={columnKeyOf(col, colIndex)}
                         className={`py-4 px-2 align-middle whitespace-nowrap ${col.className || ""}`}
                       >
                         {col.cell

@@ -194,8 +194,10 @@ export default function AdminOverview() {
   };
 
   const columns = useMemo(() => {
-    const cols: ColumnDef<GroupedEmployeeRecord>[] = [
-      {
+    // Declared as one list so the visual order is the source order. The two
+    // conditional columns are placed inline instead of pushed at the end.
+    const empleadoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "workerName",
         header: "Empleado",
         sortable: true,
         accessorKey: "workerName",
@@ -220,8 +222,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      },
-      {
+    };
+
+    const fechaCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "date",
         header: isSingleDay ? "Fecha" : "Rango",
         className: "w-[8%]",
         cell: () => {
@@ -240,8 +244,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      },
-      {
+    };
+
+    const departamentoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "department",
         header: "Departamento",
         sortable: true,
         accessorKey: "department",
@@ -252,8 +258,10 @@ export default function AdminOverview() {
             </span>
           </div>
         ),
-      },
-      {
+    };
+
+    const turnoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "shiftName",
         header: "Turno Asignado",
         sortable: true,
         accessorKey: "shiftName",
@@ -264,11 +272,10 @@ export default function AdminOverview() {
             </span>
           </div>
         ),
-      },
-    ];
+    };
 
-    if (isSingleDay) {
-      cols.push({
+    const actividadCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "activity",
         header: "Actividad (Entrada ➔ Salida)",
         sortable: false,
         className: "w-[20%]",
@@ -323,11 +330,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      });
-    }
+    };
 
-    cols.push(
-      {
+    const totalAsistCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalAttendances",
         header: "Total Asist.",
         sortable: true,
         accessorKey: "totalAttendances",
@@ -343,8 +349,10 @@ export default function AdminOverview() {
             )}
           </div>
         ),
-      },
-      {
+    };
+
+    const totalFaltasCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalUnjustified",
         header: "Total Faltas",
         sortable: true,
         accessorKey: "totalUnjustified",
@@ -356,8 +364,10 @@ export default function AdminOverview() {
             {row.totalUnjustified > 0 ? row.totalUnjustified : "-"}
           </span>
         ),
-      },
-      {
+    };
+
+    const permisosCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalPermissions",
         header: "Permisos",
         sortable: true,
         accessorKey: "totalPermissions",
@@ -367,11 +377,10 @@ export default function AdminOverview() {
             {row.totalPermissions > 0 ? row.totalPermissions : "-"}
           </span>
         ),
-      },
-    );
+    };
 
-    if (!isSingleDay) {
-      cols.push({
+    const accionesCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "actions",
         header: "Acciones",
         className: "text-center pr-6",
         cell: (row) => (
@@ -383,10 +392,19 @@ export default function AdminOverview() {
             <Eye size={18} />
           </button>
         ),
-      });
-    }
+    };
 
-    return cols;
+    return [
+      empleadoCol,
+      fechaCol,
+      isSingleDay ? actividadCol : null,
+      departamentoCol,
+      turnoCol,
+      totalAsistCol,
+      totalFaltasCol,
+      permisosCol,
+      isSingleDay ? null : accionesCol,
+    ].filter((c): c is ColumnDef<GroupedEmployeeRecord> => c !== null);
   }, [isSingleDay, dateRange]);
 
   const attendancePercentage =
