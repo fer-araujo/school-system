@@ -54,6 +54,12 @@ export default function Scanner() {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * A ref, not state: `status` only updates on the next render, so a reader
+   * firing twice in the same tick would slip past it and run two concurrent
+   * scans. This drops the second submit synchronously.
+   */
+  const isProcessingRef = useRef(false);
 
   const { logout } = useAuth();
 
@@ -91,6 +97,8 @@ export default function Scanner() {
   const handleScanSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!scannedValue.trim()) return;
+    if (isProcessingRef.current) return;
+    isProcessingRef.current = true;
 
     setStatus("loading");
     setMessage("Verificando identidad...");
@@ -129,6 +137,8 @@ export default function Scanner() {
       // did not, leaving stale data behind; scheduleReset clears both.
       setEmployeeInfo(null);
       scheduleReset();
+    } finally {
+      isProcessingRef.current = false;
     }
   };
 
