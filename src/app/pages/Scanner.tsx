@@ -21,6 +21,9 @@ import { useAuth } from "../context/AuthContext";
 
 type ScanStatus = "idle" | "loading" | "success" | "error";
 
+/** How long a scan result stays on screen before the terminal resets. */
+const FEEDBACK_MS = 8500;
+
 // 🚀 Inicializamos las instancias (Limpieza Arquitectónica)
 const attendanceRepo = new FirebaseAttendanceRepository();
 const employeeRepo = new FirebaseEmployeeRepository();
@@ -50,8 +53,29 @@ export default function Scanner() {
   } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { logout } = useAuth();
+
+  /**
+   * Only one reset may ever be pending. Without this, two scans in a row arm
+   * two timers and the first one blanks the second scan's confirmation — which
+   * at 8.5s with a queue at the terminal would happen constantly.
+   */
+  const scheduleReset = () => {
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    resetTimerRef.current = setTimeout(() => {
+      setStatus("idle");
+      setMessage("Esperando escaneo...");
+      setEmployeeInfo(null);
+    }, FEEDBACK_MS);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const focusInput = () => {
@@ -92,11 +116,7 @@ export default function Scanner() {
         skippedBlocks: result.skippedBlocks,
       });
 
-      setTimeout(() => {
-        setStatus("idle");
-        setMessage("Esperando escaneo...");
-        setEmployeeInfo(null);
-      }, 3500);
+      scheduleReset();
     } catch (error) {
       console.error(error);
       setStatus("error");
@@ -105,10 +125,10 @@ export default function Scanner() {
           "Error al registrar la asistencia.",
       );
 
-      setTimeout(() => {
-        setStatus("idle");
-        setMessage("Esperando escaneo...");
-      }, 3500);
+      // The success path used to clear employeeInfo here and the error path
+      // did not, leaving stale data behind; scheduleReset clears both.
+      setEmployeeInfo(null);
+      scheduleReset();
     }
   };
 
