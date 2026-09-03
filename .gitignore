@@ -31,3 +31,6 @@ graphify-out/
 # Firebase admin service account (never commit)
 serviceAccount*.json
 *-firebase-adminsdk-*.json
+
+# Local Claude Code settings and worktrees
+.claude/
