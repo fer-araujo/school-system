@@ -73,6 +73,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Legacy: getHolidayByDate used to read this collection instead of
+    // /holidays. Kept readable so these rules can be deployed before the fix
+    // reaches production without breaking every scan. Remove it once the
+    // consolidated code is live.
+    match /calendar/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // Anything not matched above is denied.
     match /{document=**} {
       allow read, write: if false;
