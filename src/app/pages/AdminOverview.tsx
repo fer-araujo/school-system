@@ -7,6 +7,9 @@ import {
   ArrowRight,
   Calendar as CalendarIcon,
   Eye,
+  Clock,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 // --- REPOSITORIOS Y CASOS DE USO ---
@@ -32,6 +35,7 @@ import { exportAdminOverviewToCSV } from "../../utils/CSVfunctions";
 // 🌟 NUEVOS COMPONENTES EXTRAÍDOS
 import ShiftFilterPills from "../components/ui/ShiftFilterPills";
 import EmployeeDetailModal from "../components/admin/EmployeeDetailModal";
+import StatCard from "../components/ui/StatCard";
 
 const employeeRepo = new FirebaseEmployeeRepository();
 const attendanceRepo = new FirebaseAttendanceRepository();
@@ -46,6 +50,14 @@ const getDashboardStatsUseCase = new GetDashboardStats(
   shiftRepo,
   calendarRepo,
 );
+
+/** Short labels for the amber marker on an out-of-schedule check-in. */
+const ANOMALY_LABELS: Record<string, string> = {
+  NO_SHIFT_ASSIGNED: "Sin turno asignado",
+  SHIFT_NOT_FOUND: "Turno inexistente",
+  REST_DAY: "Día de descanso",
+  NO_BLOCKS_CONFIGURED: "Sin horarios ese día",
+};
 
 export interface GroupedEmployeeRecord {
   id: string;
@@ -80,11 +92,15 @@ export default function AdminOverview() {
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] =
     useState<GroupedEmployeeRecord | null>(null);
 
+  const [showOnlyLates, setShowOnlyLates] = useState(false);
+
   const [stats, setStats] = useState({
     totalEmployees: 0,
     expectedToday: 0,
     totalAbsences: 0,
     faltasInjustificadas: 0,
+    employeesWithLates: 0,
+    lateUserIds: [] as string[],
     isPollingNeeded: false,
   });
 
@@ -185,8 +201,11 @@ export default function AdminOverview() {
     if (selectedShift !== "Todos") {
       result = result.filter((emp) => emp.shiftName === selectedShift);
     }
+    if (showOnlyLates) {
+      result = result.filter((emp) => emp.totalLates > 0);
+    }
     return result.sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [tableData, selectedShift]);
+  }, [tableData, selectedShift, showOnlyLates]);
 
   const handleOpenDetail = (emp: GroupedEmployeeRecord) => {
     setSelectedEmployeeDetail(emp);
@@ -322,6 +341,21 @@ export default function AdminOverview() {
                         >
                           {p.checkOut ? formatTime(p.checkOut) : "En turno"}
                         </span>
+                        {p.anomaly && (
+                          <span
+                            title={
+                              ANOMALY_LABELS[p.anomaly.code] ??
+                              "Fuera de horario"
+                            }
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200/60 text-[10px] font-medium"
+                          >
+                            <AlertTriangle size={10} />
+                            {p.anomaly.code === "REST_DAY" && p.anomaly.detail
+                              ? p.anomaly.detail
+                              : (ANOMALY_LABELS[p.anomaly.code] ??
+                                "Fuera de horario")}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -429,101 +463,87 @@ export default function AdminOverview() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40 transition-opacity">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Personal Activo
-              </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : stats.totalEmployees}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-blue-100 bg-white text-blue-600">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-blue-50 text-blue-600 text-[11px] font-medium">
-              Plantilla Completa
-            </span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-8">
+        <StatCard
+          label="Personal Activo"
+          value={stats.totalEmployees}
+          icon={<Users className="w-5 h-5" />}
+          accent="blue"
+          footer="Plantilla Completa"
+          isLoading={isFullyLoading}
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Asistencias
+        <StatCard
+          label="Asistencias"
+          value={
+            <>
+              {records.length}{" "}
+              <span className="text-xl text-slate-400 font-normal">
+                / {stats.expectedToday}
+              </span>
+            </>
+          }
+          icon={<UserCheck className="w-5 h-5" />}
+          accent="emerald"
+          isLoading={isFullyLoading}
+          footer={
+            <>
+              <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
+                <div
+                  className="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
+                  style={{
+                    width: `${isFullyLoading ? 0 : attendancePercentage}%`,
+                  }}
+                ></div>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Turnos esperados en el rango
               </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : records.length}{" "}
-                <span className="text-xl text-slate-400 font-normal">
-                  / {isFullyLoading ? "-" : stats.expectedToday}
-                </span>
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-emerald-100 bg-white text-emerald-600">
-              <UserCheck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto w-full">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
-              <div
-                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
-                style={{
-                  width: `${isFullyLoading ? 0 : attendancePercentage}%`,
-                }}
-              ></div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Turnos esperados en el rango
-            </p>
-          </div>
-        </div>
+            </>
+          }
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Permisos
-              </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : stats.totalAbsences}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-amber-200 bg-white text-amber-500">
-              <UserMinus className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-amber-50 text-amber-600 border border-amber-100/50 text-[11px] font-medium">
-              Incapacidades / Vacaciones
-            </span>
-          </div>
-        </div>
+        <StatCard
+          label="Retardos"
+          value={
+            <>
+              {stats.employeesWithLates}{" "}
+              <span className="text-xl text-slate-400 font-normal">
+                / {stats.totalEmployees}
+              </span>
+            </>
+          }
+          icon={<Clock className="w-5 h-5" />}
+          accent="orange"
+          valueClassName={
+            stats.employeesWithLates > 0 ? "text-orange-600" : "text-slate-800"
+          }
+          isLoading={isFullyLoading}
+          footer={
+            showOnlyLates ? "Mostrando solo retardos" : "Clic para ver quiénes"
+          }
+          onClick={() => setShowOnlyLates((v) => !v)}
+          isActive={showOnlyLates}
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Faltas Injust.
-              </p>
-              <h3 className="text-4xl font-semibold text-rose-600 tracking-tight">
-                {isFullyLoading ? "..." : stats.faltasInjustificadas}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-rose-200 bg-white text-rose-500">
-              <UserX className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-rose-50 text-rose-600 border border-rose-100/50 text-[11px] font-medium">
-              Turnos pasados sin asistir
-            </span>
-          </div>
-        </div>
+        <StatCard
+          label="Permisos"
+          value={stats.totalAbsences}
+          icon={<UserMinus className="w-5 h-5" />}
+          accent="amber"
+          footer="Incapacidades / Vacaciones"
+          isLoading={isFullyLoading}
+        />
+
+        <StatCard
+          label="Faltas Injust."
+          value={stats.faltasInjustificadas}
+          icon={<UserX className="w-5 h-5" />}
+          accent="rose"
+          valueClassName="text-rose-600"
+          footer="Turnos pasados sin asistir"
+          isLoading={isFullyLoading}
+        />
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -533,11 +553,25 @@ export default function AdminOverview() {
             Actividad Filtrada
           </h3>
 
-          <ShiftFilterPills
-            shiftsList={availableShifts}
-            selectedShift={selectedShift}
-            onSelect={setSelectedShift}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ShiftFilterPills
+              shiftsList={availableShifts}
+              selectedShift={selectedShift}
+              onSelect={setSelectedShift}
+            />
+
+            {/* The card counts everyone; this table is also filtered by shift,
+                so both chips stay visible rather than silently disagreeing. */}
+            {showOnlyLates && (
+              <button
+                onClick={() => setShowOnlyLates(false)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors cursor-pointer"
+              >
+                Solo con retardos
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
 
         <DataTable
@@ -545,7 +579,11 @@ export default function AdminOverview() {
           data={groupedAndFilteredData}
           isLoading={isFullyLoading}
           loadingText="Calculando registros..."
-          emptyText="No hay registros para este rango o departamento."
+          emptyText={
+            showOnlyLates
+              ? "Nadie llegó tarde en este rango."
+              : "No hay registros para este rango o turno."
+          }
         />
       </div>
 
