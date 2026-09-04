@@ -59,6 +59,48 @@ const ANOMALY_LABELS: Record<string, string> = {
   NO_BLOCKS_CONFIGURED: "Sin horarios ese día",
 };
 
+/**
+ * Each stat card doubles as a filter on the table below it. "none" is what
+ * the Personal Activo card selects, since the whole roster is what that card
+ * counts.
+ */
+type StatFilter = "none" | "attendances" | "lates" | "permissions" | "absences";
+
+const STAT_FILTERS: Record<
+  Exclude<StatFilter, "none">,
+  {
+    label: string;
+    chip: string;
+    emptyText: string;
+    predicate: (emp: GroupedEmployeeRecord) => boolean;
+  }
+> = {
+  attendances: {
+    label: "Solo con asistencias",
+    chip: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+    emptyText: "Nadie registró asistencia en este rango.",
+    predicate: (emp) => emp.totalAttendances > 0,
+  },
+  lates: {
+    label: "Solo con retardos",
+    chip: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100",
+    emptyText: "Nadie llegó tarde en este rango.",
+    predicate: (emp) => emp.totalLates > 0,
+  },
+  permissions: {
+    label: "Solo con permisos",
+    chip: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
+    emptyText: "Nadie tuvo permisos en este rango.",
+    predicate: (emp) => emp.totalPermissions > 0,
+  },
+  absences: {
+    label: "Solo con faltas",
+    chip: "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100",
+    emptyText: "Nadie tuvo faltas injustificadas en este rango.",
+    predicate: (emp) => emp.totalUnjustified > 0,
+  },
+};
+
 export interface GroupedEmployeeRecord {
   id: string;
   userId: string;
@@ -92,7 +134,12 @@ export default function AdminOverview() {
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] =
     useState<GroupedEmployeeRecord | null>(null);
 
-  const [showOnlyLates, setShowOnlyLates] = useState(false);
+  const [statFilter, setStatFilter] = useState<StatFilter>("none");
+
+  // Clicking the active card clears it, so a card is both the way in and the
+  // way out of its own filter.
+  const toggleStatFilter = (filter: StatFilter) =>
+    setStatFilter((current) => (current === filter ? "none" : filter));
 
   const [stats, setStats] = useState({
     totalEmployees: 0,
@@ -201,11 +248,11 @@ export default function AdminOverview() {
     if (selectedShift !== "Todos") {
       result = result.filter((emp) => emp.shiftName === selectedShift);
     }
-    if (showOnlyLates) {
-      result = result.filter((emp) => emp.totalLates > 0);
+    if (statFilter !== "none") {
+      result = result.filter(STAT_FILTERS[statFilter].predicate);
     }
     return result.sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [tableData, selectedShift, showOnlyLates]);
+  }, [tableData, selectedShift, statFilter]);
 
   const handleOpenDetail = (emp: GroupedEmployeeRecord) => {
     setSelectedEmployeeDetail(emp);
@@ -469,8 +516,10 @@ export default function AdminOverview() {
           value={stats.totalEmployees}
           icon={<Users className="w-5 h-5" />}
           accent="blue"
-          footer="Plantilla Completa"
+          footer="Total de Personal"
           isLoading={isFullyLoading}
+          onClick={() => setStatFilter("none")}
+          isActive={statFilter === "none"}
         />
 
         <StatCard
@@ -486,6 +535,8 @@ export default function AdminOverview() {
           icon={<UserCheck className="w-5 h-5" />}
           accent="emerald"
           isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("attendances")}
+          isActive={statFilter === "attendances"}
           footer={
             <>
               <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
@@ -519,11 +570,9 @@ export default function AdminOverview() {
             stats.employeesWithLates > 0 ? "text-orange-600" : "text-slate-800"
           }
           isLoading={isFullyLoading}
-          footer={
-            showOnlyLates ? "Mostrando solo retardos" : "Clic para ver quiénes"
-          }
-          onClick={() => setShowOnlyLates((v) => !v)}
-          isActive={showOnlyLates}
+          footer="Llegadas fuera de tolerancia"
+          onClick={() => toggleStatFilter("lates")}
+          isActive={statFilter === "lates"}
         />
 
         <StatCard
@@ -533,6 +582,8 @@ export default function AdminOverview() {
           accent="amber"
           footer="Incapacidades / Vacaciones"
           isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("permissions")}
+          isActive={statFilter === "permissions"}
         />
 
         <StatCard
@@ -543,6 +594,8 @@ export default function AdminOverview() {
           valueClassName="text-rose-600"
           footer="Turnos pasados sin asistir"
           isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("absences")}
+          isActive={statFilter === "absences"}
         />
       </div>
 
@@ -562,12 +615,12 @@ export default function AdminOverview() {
 
             {/* The card counts everyone; this table is also filtered by shift,
                 so both chips stay visible rather than silently disagreeing. */}
-            {showOnlyLates && (
+            {statFilter !== "none" && (
               <button
-                onClick={() => setShowOnlyLates(false)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors cursor-pointer"
+                onClick={() => setStatFilter("none")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${STAT_FILTERS[statFilter].chip}`}
               >
-                Solo con retardos
+                {STAT_FILTERS[statFilter].label}
                 <X size={13} />
               </button>
             )}
@@ -580,8 +633,8 @@ export default function AdminOverview() {
           isLoading={isFullyLoading}
           loadingText="Calculando registros..."
           emptyText={
-            showOnlyLates
-              ? "Nadie llegó tarde en este rango."
+            statFilter !== "none"
+              ? STAT_FILTERS[statFilter].emptyText
               : "No hay registros para este rango o turno."
           }
         />

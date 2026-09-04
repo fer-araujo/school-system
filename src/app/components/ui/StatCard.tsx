@@ -9,26 +9,34 @@ export type StatCardAccent =
 
 // Full class strings only. Tailwind scans the source literally, so anything
 // built by interpolation is never generated.
-const ACCENTS: Record<StatCardAccent, { icon: string; badge: string }> = {
+const ACCENTS: Record<
+  StatCardAccent,
+  { icon: string; badge: string; active: string }
+> = {
   blue: {
     icon: "border-blue-100 text-blue-600",
     badge: "bg-blue-50 text-blue-600",
+    active: "border-blue-300 ring-2 ring-blue-100",
   },
   emerald: {
     icon: "border-emerald-100 text-emerald-600",
     badge: "bg-emerald-50 text-emerald-600 border border-emerald-100/50",
+    active: "border-emerald-300 ring-2 ring-emerald-100",
   },
   amber: {
     icon: "border-amber-200 text-amber-500",
     badge: "bg-amber-50 text-amber-600 border border-amber-100/50",
+    active: "border-amber-300 ring-2 ring-amber-100",
   },
   rose: {
     icon: "border-rose-200 text-rose-500",
     badge: "bg-rose-50 text-rose-600 border border-rose-100/50",
+    active: "border-rose-300 ring-2 ring-rose-100",
   },
   orange: {
     icon: "border-orange-200 text-orange-500",
     badge: "bg-orange-50 text-orange-600 border border-orange-100/50",
+    active: "border-orange-300 ring-2 ring-orange-100",
   },
 };
 
@@ -105,9 +113,7 @@ export default function StatCard({
       onClick={onClick}
       aria-pressed={isActive}
       className={`${base} cursor-pointer hover:border-slate-300 ${
-        isActive
-          ? "border-orange-300 ring-2 ring-orange-100"
-          : "border-slate-200"
+        isActive ? palette.active : "border-slate-200"
       }`}
     >
       {body}
