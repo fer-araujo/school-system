@@ -488,8 +488,6 @@ export default function AdminOverview() {
     ].filter((c): c is ColumnDef<GroupedEmployeeRecord> => c !== null);
   }, [isSingleDay, dateRange]);
 
-  const attendancePercentage =
-    stats.expectedToday > 0 ? (records.length / stats.expectedToday) * 100 : 0;
   const isFullyLoading = isFetchingNetwork || isCalculating;
 
   return (
@@ -537,21 +535,7 @@ export default function AdminOverview() {
           isLoading={isFullyLoading}
           onClick={() => toggleStatFilter("attendances")}
           isActive={statFilter === "attendances"}
-          footer={
-            <>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
-                <div
-                  className="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
-                  style={{
-                    width: `${isFullyLoading ? 0 : attendancePercentage}%`,
-                  }}
-                ></div>
-              </div>
-              <p className="text-[11px] text-slate-500 font-medium">
-                Turnos esperados en el rango
-              </p>
-            </>
-          }
+          footer="Del total programado"
         />
 
         <StatCard
