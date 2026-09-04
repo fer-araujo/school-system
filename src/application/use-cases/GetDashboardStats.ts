@@ -66,6 +66,9 @@ export class GetDashboardStats {
       let totalAbsences = 0;
       let maxDeadline = -1;
       const fullTableData: DashboardTableRecord[] = [];
+      // Distinct people, not late events: someone late on three days counts
+      // once, so the card reads against the headcount beside it.
+      const lateUserIds = new Set<string>();
 
       const now = new Date();
       const offsetMs = now.getTimezoneOffset() * 60000;
@@ -108,6 +111,21 @@ export class GetDashboardStats {
             : undefined;
           const currentShiftName = shift ? shift.name : "Sin Turno";
 
+          // Everyone rostered for this date belongs in the denominator,
+          // whether or not they showed up. This used to be counted only in
+          // the "did not attend" branch below, so expectedToday was really
+          // "scheduled people who were missing" — on a full-attendance day it
+          // reached zero and the dashboard divided by it.
+          const targetDayId =
+            WEEK_DAYS[new Date(targetDate + "T12:00:00").getDay()].id;
+          const isScheduled = Boolean(
+            shift &&
+              shift.blocksByDay &&
+              shift.blocksByDay[targetDayId]?.length > 0 &&
+              shift.workDays.includes(targetDayId),
+          );
+          if (isScheduled && !isHoliday) expectedToday++;
+
           // A. ¿Asistió a pesar del festivo/permiso?
           if (attendedUserIds.has(worker.id)) {
             const attendanceRecord = attendancesForDate.find(
@@ -117,6 +135,9 @@ export class GetDashboardStats {
               faltasInjustificadas += attendanceRecord.periods.filter(
                 (p) => p.isAbsent,
               ).length;
+              if (attendanceRecord.periods.some((p) => p.isLate)) {
+                lateUserIds.add(worker.id);
+              }
               fullTableData.push({
                 ...attendanceRecord,
                 department: worker.department,
@@ -157,15 +178,7 @@ export class GetDashboardStats {
 
           // D. Evaluación de Falta Injustificada
           if (shift) {
-            const dateObj = new Date(targetDate + "T12:00:00");
-            const targetDayId = WEEK_DAYS[dateObj.getDay()].id;
-
-            if (
-              shift.blocksByDay &&
-              shift.blocksByDay[targetDayId]?.length > 0 &&
-              shift.workDays.includes(targetDayId)
-            ) {
-              expectedToday++;
+            if (isScheduled) {
               const block = shift.blocksByDay[targetDayId][0];
               const [h, m] = block.start.split(":").map(Number);
               const deadline = h * 60 + m + (shift.toleranceMinutes || 0);
@@ -212,16 +225,22 @@ export class GetDashboardStats {
         expectedToday,
         totalAbsences,
         faltasInjustificadas,
+        employeesWithLates: lateUserIds.size,
+        lateUserIds: Array.from(lateUserIds),
         isPollingNeeded,
         fullTableData,
       };
     } catch (error) {
       console.error("Error obteniendo estadísticas:", error);
+      // Must carry the same keys, or the inferred return type becomes a union
+      // and every caller loses the fields.
       return {
         totalEmployees: 0,
         expectedToday: 0,
         totalAbsences: 0,
         faltasInjustificadas: 0,
+        employeesWithLates: 0,
+        lateUserIds: [] as string[],
         isPollingNeeded: false,
         fullTableData: currentAttendances as DashboardTableRecord[],
       };

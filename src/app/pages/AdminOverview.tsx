@@ -7,6 +7,9 @@ import {
   ArrowRight,
   Calendar as CalendarIcon,
   Eye,
+  Clock,
+  AlertTriangle,
+  X,
 } from "lucide-react";
 
 // --- REPOSITORIOS Y CASOS DE USO ---
@@ -32,6 +35,7 @@ import { exportAdminOverviewToCSV } from "../../utils/CSVfunctions";
 // 🌟 NUEVOS COMPONENTES EXTRAÍDOS
 import ShiftFilterPills from "../components/ui/ShiftFilterPills";
 import EmployeeDetailModal from "../components/admin/EmployeeDetailModal";
+import StatCard from "../components/ui/StatCard";
 
 const employeeRepo = new FirebaseEmployeeRepository();
 const attendanceRepo = new FirebaseAttendanceRepository();
@@ -46,6 +50,56 @@ const getDashboardStatsUseCase = new GetDashboardStats(
   shiftRepo,
   calendarRepo,
 );
+
+/** Short labels for the amber marker on an out-of-schedule check-in. */
+const ANOMALY_LABELS: Record<string, string> = {
+  NO_SHIFT_ASSIGNED: "Sin turno asignado",
+  SHIFT_NOT_FOUND: "Turno inexistente",
+  REST_DAY: "Día de descanso",
+  NO_BLOCKS_CONFIGURED: "Sin horarios ese día",
+};
+
+/**
+ * Each stat card doubles as a filter on the table below it. "none" is what
+ * the Personal Activo card selects, since the whole roster is what that card
+ * counts.
+ */
+type StatFilter = "none" | "attendances" | "lates" | "permissions" | "absences";
+
+const STAT_FILTERS: Record<
+  Exclude<StatFilter, "none">,
+  {
+    label: string;
+    chip: string;
+    emptyText: string;
+    predicate: (emp: GroupedEmployeeRecord) => boolean;
+  }
+> = {
+  attendances: {
+    label: "Solo con asistencias",
+    chip: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100",
+    emptyText: "Nadie registró asistencia en este rango.",
+    predicate: (emp) => emp.totalAttendances > 0,
+  },
+  lates: {
+    label: "Solo con retardos",
+    chip: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100",
+    emptyText: "Nadie llegó tarde en este rango.",
+    predicate: (emp) => emp.totalLates > 0,
+  },
+  permissions: {
+    label: "Solo con permisos",
+    chip: "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100",
+    emptyText: "Nadie tuvo permisos en este rango.",
+    predicate: (emp) => emp.totalPermissions > 0,
+  },
+  absences: {
+    label: "Solo con faltas",
+    chip: "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100",
+    emptyText: "Nadie tuvo faltas injustificadas en este rango.",
+    predicate: (emp) => emp.totalUnjustified > 0,
+  },
+};
 
 export interface GroupedEmployeeRecord {
   id: string;
@@ -80,11 +134,20 @@ export default function AdminOverview() {
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] =
     useState<GroupedEmployeeRecord | null>(null);
 
+  const [statFilter, setStatFilter] = useState<StatFilter>("none");
+
+  // Clicking the active card clears it, so a card is both the way in and the
+  // way out of its own filter.
+  const toggleStatFilter = (filter: StatFilter) =>
+    setStatFilter((current) => (current === filter ? "none" : filter));
+
   const [stats, setStats] = useState({
     totalEmployees: 0,
     expectedToday: 0,
     totalAbsences: 0,
     faltasInjustificadas: 0,
+    employeesWithLates: 0,
+    lateUserIds: [] as string[],
     isPollingNeeded: false,
   });
 
@@ -185,8 +248,11 @@ export default function AdminOverview() {
     if (selectedShift !== "Todos") {
       result = result.filter((emp) => emp.shiftName === selectedShift);
     }
+    if (statFilter !== "none") {
+      result = result.filter(STAT_FILTERS[statFilter].predicate);
+    }
     return result.sort((a, b) => a.workerName.localeCompare(b.workerName));
-  }, [tableData, selectedShift]);
+  }, [tableData, selectedShift, statFilter]);
 
   const handleOpenDetail = (emp: GroupedEmployeeRecord) => {
     setSelectedEmployeeDetail(emp);
@@ -194,8 +260,10 @@ export default function AdminOverview() {
   };
 
   const columns = useMemo(() => {
-    const cols: ColumnDef<GroupedEmployeeRecord>[] = [
-      {
+    // Declared as one list so the visual order is the source order. The two
+    // conditional columns are placed inline instead of pushed at the end.
+    const empleadoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "workerName",
         header: "Empleado",
         sortable: true,
         accessorKey: "workerName",
@@ -220,8 +288,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      },
-      {
+    };
+
+    const fechaCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "date",
         header: isSingleDay ? "Fecha" : "Rango",
         className: "w-[8%]",
         cell: () => {
@@ -240,8 +310,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      },
-      {
+    };
+
+    const departamentoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "department",
         header: "Departamento",
         sortable: true,
         accessorKey: "department",
@@ -252,8 +324,10 @@ export default function AdminOverview() {
             </span>
           </div>
         ),
-      },
-      {
+    };
+
+    const turnoCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "shiftName",
         header: "Turno Asignado",
         sortable: true,
         accessorKey: "shiftName",
@@ -264,11 +338,10 @@ export default function AdminOverview() {
             </span>
           </div>
         ),
-      },
-    ];
+    };
 
-    if (isSingleDay) {
-      cols.push({
+    const actividadCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "activity",
         header: "Actividad (Entrada ➔ Salida)",
         sortable: false,
         className: "w-[20%]",
@@ -315,6 +388,21 @@ export default function AdminOverview() {
                         >
                           {p.checkOut ? formatTime(p.checkOut) : "En turno"}
                         </span>
+                        {p.anomaly && (
+                          <span
+                            title={
+                              ANOMALY_LABELS[p.anomaly.code] ??
+                              "Fuera de horario"
+                            }
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200/60 text-[10px] font-medium"
+                          >
+                            <AlertTriangle size={10} />
+                            {p.anomaly.code === "REST_DAY" && p.anomaly.detail
+                              ? p.anomaly.detail
+                              : (ANOMALY_LABELS[p.anomaly.code] ??
+                                "Fuera de horario")}
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -323,11 +411,10 @@ export default function AdminOverview() {
             </div>
           );
         },
-      });
-    }
+    };
 
-    cols.push(
-      {
+    const totalAsistCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalAttendances",
         header: "Total Asist.",
         sortable: true,
         accessorKey: "totalAttendances",
@@ -343,8 +430,10 @@ export default function AdminOverview() {
             )}
           </div>
         ),
-      },
-      {
+    };
+
+    const totalFaltasCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalUnjustified",
         header: "Total Faltas",
         sortable: true,
         accessorKey: "totalUnjustified",
@@ -356,8 +445,10 @@ export default function AdminOverview() {
             {row.totalUnjustified > 0 ? row.totalUnjustified : "-"}
           </span>
         ),
-      },
-      {
+    };
+
+    const permisosCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "totalPermissions",
         header: "Permisos",
         sortable: true,
         accessorKey: "totalPermissions",
@@ -367,11 +458,10 @@ export default function AdminOverview() {
             {row.totalPermissions > 0 ? row.totalPermissions : "-"}
           </span>
         ),
-      },
-    );
+    };
 
-    if (!isSingleDay) {
-      cols.push({
+    const accionesCol: ColumnDef<GroupedEmployeeRecord> = {
+        id: "actions",
         header: "Acciones",
         className: "text-center pr-6",
         cell: (row) => (
@@ -383,14 +473,21 @@ export default function AdminOverview() {
             <Eye size={18} />
           </button>
         ),
-      });
-    }
+    };
 
-    return cols;
+    return [
+      empleadoCol,
+      fechaCol,
+      isSingleDay ? actividadCol : null,
+      departamentoCol,
+      turnoCol,
+      totalAsistCol,
+      totalFaltasCol,
+      permisosCol,
+      isSingleDay ? null : accionesCol,
+    ].filter((c): c is ColumnDef<GroupedEmployeeRecord> => c !== null);
   }, [isSingleDay, dateRange]);
 
-  const attendancePercentage =
-    stats.expectedToday > 0 ? (records.length / stats.expectedToday) * 100 : 0;
   const isFullyLoading = isFetchingNetwork || isCalculating;
 
   return (
@@ -411,101 +508,79 @@ export default function AdminOverview() {
         }
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40 transition-opacity">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Personal Activo
-              </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : stats.totalEmployees}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-blue-100 bg-white text-blue-600">
-              <Users className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-blue-50 text-blue-600 text-[11px] font-medium">
-              Plantilla Completa
-            </span>
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-5 mb-8">
+        <StatCard
+          label="Personal Activo"
+          value={stats.totalEmployees}
+          icon={<Users className="w-5 h-5" />}
+          accent="blue"
+          footer="Total de Personal"
+          isLoading={isFullyLoading}
+          onClick={() => setStatFilter("none")}
+          isActive={statFilter === "none"}
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Asistencias
-              </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : records.length}{" "}
-                <span className="text-xl text-slate-400 font-normal">
-                  / {isFullyLoading ? "-" : stats.expectedToday}
-                </span>
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-emerald-100 bg-white text-emerald-600">
-              <UserCheck className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto w-full">
-            <div className="w-full bg-slate-100 rounded-full h-1.5 mb-2 overflow-hidden">
-              <div
-                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-1000 ease-out"
-                style={{
-                  width: `${isFullyLoading ? 0 : attendancePercentage}%`,
-                }}
-              ></div>
-            </div>
-            <p className="text-[11px] text-slate-500 font-medium">
-              Turnos esperados en el rango
-            </p>
-          </div>
-        </div>
+        <StatCard
+          label="Asistencias"
+          value={
+            <>
+              {records.length}{" "}
+              <span className="text-xl text-slate-400 font-normal">
+                / {stats.expectedToday}
+              </span>
+            </>
+          }
+          icon={<UserCheck className="w-5 h-5" />}
+          accent="emerald"
+          isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("attendances")}
+          isActive={statFilter === "attendances"}
+          footer="Del total programado"
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Permisos
-              </p>
-              <h3 className="text-4xl font-semibold text-slate-800 tracking-tight">
-                {isFullyLoading ? "..." : stats.totalAbsences}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-amber-200 bg-white text-amber-500">
-              <UserMinus className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-amber-50 text-amber-600 border border-amber-100/50 text-[11px] font-medium">
-              Incapacidades / Vacaciones
-            </span>
-          </div>
-        </div>
+        <StatCard
+          label="Retardos"
+          value={
+            <>
+              {stats.employeesWithLates}{" "}
+              <span className="text-xl text-slate-400 font-normal">
+                / {stats.totalEmployees}
+              </span>
+            </>
+          }
+          icon={<Clock className="w-5 h-5" />}
+          accent="orange"
+          valueClassName={
+            stats.employeesWithLates > 0 ? "text-orange-600" : "text-slate-800"
+          }
+          isLoading={isFullyLoading}
+          footer="Llegadas fuera de tolerancia"
+          onClick={() => toggleStatFilter("lates")}
+          isActive={statFilter === "lates"}
+        />
 
-        <div className="bg-white rounded-[20px] p-6 border border-slate-200 shadow-xs flex flex-col justify-between h-40">
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">
-                Faltas Injust.
-              </p>
-              <h3 className="text-4xl font-semibold text-rose-600 tracking-tight">
-                {isFullyLoading ? "..." : stats.faltasInjustificadas}
-              </h3>
-            </div>
-            <div className="p-2.5 rounded-xl border border-rose-200 bg-white text-rose-500">
-              <UserX className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="mt-auto">
-            <span className="inline-block px-2.5 py-1 rounded bg-rose-50 text-rose-600 border border-rose-100/50 text-[11px] font-medium">
-              Turnos pasados sin asistir
-            </span>
-          </div>
-        </div>
+        <StatCard
+          label="Permisos"
+          value={stats.totalAbsences}
+          icon={<UserMinus className="w-5 h-5" />}
+          accent="amber"
+          footer="Incapacidades / Vacaciones"
+          isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("permissions")}
+          isActive={statFilter === "permissions"}
+        />
+
+        <StatCard
+          label="Faltas Injust."
+          value={stats.faltasInjustificadas}
+          icon={<UserX className="w-5 h-5" />}
+          accent="rose"
+          valueClassName="text-rose-600"
+          footer="Turnos pasados sin asistir"
+          isLoading={isFullyLoading}
+          onClick={() => toggleStatFilter("absences")}
+          isActive={statFilter === "absences"}
+        />
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -515,11 +590,25 @@ export default function AdminOverview() {
             Actividad Filtrada
           </h3>
 
-          <ShiftFilterPills
-            shiftsList={availableShifts}
-            selectedShift={selectedShift}
-            onSelect={setSelectedShift}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ShiftFilterPills
+              shiftsList={availableShifts}
+              selectedShift={selectedShift}
+              onSelect={setSelectedShift}
+            />
+
+            {/* The card counts everyone; this table is also filtered by shift,
+                so both chips stay visible rather than silently disagreeing. */}
+            {statFilter !== "none" && (
+              <button
+                onClick={() => setStatFilter("none")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${STAT_FILTERS[statFilter].chip}`}
+              >
+                {STAT_FILTERS[statFilter].label}
+                <X size={13} />
+              </button>
+            )}
+          </div>
         </div>
 
         <DataTable
@@ -527,7 +616,11 @@ export default function AdminOverview() {
           data={groupedAndFilteredData}
           isLoading={isFullyLoading}
           loadingText="Calculando registros..."
-          emptyText="No hay registros para este rango o departamento."
+          emptyText={
+            statFilter !== "none"
+              ? STAT_FILTERS[statFilter].emptyText
+              : "No hay registros para este rango o turno."
+          }
         />
       </div>
 

@@ -11,10 +11,11 @@ import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../../infrastructure/firebase/config"; // Esto es válido aquí solo para el reset, aunque idealmente iría al AuthRepository
+import { INVALID_ROLE_CODE } from "../../infrastructure/repositories/FirebaseAuthRepository";
 import toast from "react-hot-toast";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
@@ -87,22 +88,30 @@ export default function Login() {
       // 🌟 ARQUITECTURA LIMPIA: El context/repository hace el trabajo sucio y nos devuelve la data
       const userData = await login(email, password);
 
-      // Dependiendo de cómo lo tengas en tu AuthContext, podrías retornar el string directo
-      // ej: const role = await login(...);
-      const role = userData?.role || "ADMIN"; // Fallback por seguridad
-
-      if (role === "SCANNER") {
-        navigate("/scanner");
-      } else if (role === "WORKER") {
-        navigate("/employee");
+      // Fail closed: only roles with a portal are routed anywhere. Anything
+      // else ends the session instead of falling through to the admin tree.
+      if (userData?.role === "SCANNER") {
+        navigate("/scanner", { replace: true });
+      } else if (userData?.role === "ADMIN") {
+        navigate("/admin/dashboard", { replace: true });
       } else {
-        navigate("/admin");
+        await logout();
+        setGlobalError(
+          "Tu cuenta no tiene acceso a este portal. Contacta a administración.",
+        );
       }
     } catch (error: unknown) {
       const firebaseError = error as { message?: string };
       const errorMessage = firebaseError.message?.toLowerCase() || "";
 
-      if (
+      if (errorMessage.includes(INVALID_ROLE_CODE)) {
+        // Credentials were valid, so the firebase session is live even though
+        // we refuse it — tear it down instead of leaving it dangling.
+        await logout();
+        setGlobalError(
+          "Tu cuenta no tiene un rol válido asignado. Contacta a administración.",
+        );
+      } else if (
         errorMessage.includes("invalid-credential") ||
         errorMessage.includes("user-not-found") ||
         errorMessage.includes("wrong-password")

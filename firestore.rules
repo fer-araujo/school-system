@@ -1,0 +1,90 @@
+rules_version = '2';
+
+// Authorization model
+// -------------------
+// Roles live in users/{uid}.role and are read here with get(), which bypasses
+// rules. The client cannot be trusted to enforce anything: App.tsx only stops
+// accidental access, these rules are what stop deliberate access.
+//
+// Known trade-off: the SCANNER terminal needs `list` on /users because badge
+// resolution (getWorkerByBadgeId / getWorkerByEmployeeNumber) runs as a
+// collection query in the browser. Moving ProcessAttendance to a Cloud
+// Function would remove that need entirely — tracked as the target state.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && userDoc().role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('ADMIN');
+    }
+
+    // The attendance terminal. Read-only everywhere except /attendance.
+    function isScanner() {
+      return hasRole('SCANNER');
+    }
+
+    function isTerminal() {
+      return isAdmin() || isScanner();
+    }
+
+    match /users/{uid} {
+      // A signed-in user may always read their own document — AuthContext
+      // needs this on every session bootstrap, before any role is known.
+      allow get: if isSignedIn() && (request.auth.uid == uid || isTerminal());
+      allow list: if isTerminal();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /attendance/{docId} {
+      allow read: if isTerminal();
+      allow create, update: if isTerminal();
+      allow delete: if isAdmin();
+    }
+
+    match /shifts/{shiftId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /shift_assignments/{assignmentId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /absences/{absenceId} {
+      allow read: if isTerminal();
+      allow write: if isAdmin();
+    }
+
+    match /holidays/{holidayId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Legacy: getHolidayByDate used to read this collection instead of
+    // /holidays. Kept readable so these rules can be deployed before the fix
+    // reaches production without breaking every scan. Remove it once the
+    // consolidated code is live.
+    match /calendar/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Anything not matched above is denied.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

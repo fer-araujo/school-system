@@ -1,13 +1,13 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 export default function renderSortIcon(
-  index: number,
+  columnKey: string,
   sortConfig: {
-    columnIndex: number | null;
+    columnKey: string | null;
     direction: "asc" | "desc" | null;
   },
 ) {
-  if (sortConfig.columnIndex !== index) {
+  if (sortConfig.columnKey !== columnKey) {
     return (
       <ArrowUpDown
         size={14}

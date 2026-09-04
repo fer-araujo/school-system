@@ -13,6 +13,7 @@ import EmployeesPage from "./pages/EmployeesPage";
 import ShiftsPage from "./pages/ShiftPage";
 import AbsencesPage from "./pages/AbsencesPage";
 import HolidaysPage from "./pages/HolidaysPage";
+import Unauthorized from "./pages/Unauthorized";
 
 // --- MAIN LAYOUT (Con Sidebar) ---
 const MainLayout = ({ children }: { children: React.ReactNode }) => {
@@ -65,7 +66,17 @@ export default function App() {
     );
   }
 
-  // 2. Si es ADMIN: Layout completo con Sidebar
+  // 2. Cualquier otro rol (WORKER incluido) no tiene portal aquí.
+  if (user.role !== "ADMIN") {
+    return (
+      <>
+        <Unauthorized />
+        <Analytics />
+      </>
+    );
+  }
+
+  // 3. Si es ADMIN: Layout completo con Sidebar
   return (
     <>
       <Toaster
