@@ -3,6 +3,18 @@ import type { AttendanceRepository } from "../../domain/repositories/AttendanceR
 import type { ShiftRepository } from "../../domain/repositories/ShiftRepository";
 import type { CalendarRepository } from "../../domain/repositories/CalendarRepository";
 import type { AbsenceRepository } from "../../domain/repositories/AbsenceRepository";
+import type { ScheduleAnomaly } from "../../domain/models/User";
+import { ScanRejectedError } from "../../domain/errors/ScanRejectedError";
+import { MIN_PERIOD_MINUTES } from "../../domain/constants/attendanceRules";
+import { WEEK_DAYS } from "../../domain/constants/schoolConfig";
+import {
+  minutesSinceMidnight,
+  parseTimeToMinutes,
+  todayLocalISO,
+} from "../../domain/logic/dateTime";
+
+const formatClock = (date: Date) =>
+  date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 
 export class ProcessAttendanceScan {
   private employeeRepo: EmployeeRepository;
@@ -26,7 +38,11 @@ export class ProcessAttendanceScan {
 
   async execute(scannedData: string) {
     const rawInput = scannedData.trim();
-    if (!rawInput) throw new Error("Gafete vacío o lectura incorrecta.");
+    if (!rawInput)
+      throw new ScanRejectedError(
+        "EMPTY_BADGE",
+        "Gafete vacío o lectura incorrecta.",
+      );
 
     let user = await this.employeeRepo.getWorkerByBadgeId(rawInput);
     if (!user)
@@ -41,27 +57,39 @@ export class ProcessAttendanceScan {
       }
     }
 
-    if (!user) throw new Error("Gafete no reconocido.");
-    if (!user.isActive) throw new Error("Acceso denegado: Empleado de baja.");
+    if (!user)
+      throw new ScanRejectedError(
+        "BADGE_NOT_RECOGNIZED",
+        "Gafete no reconocido.",
+      );
+    if (!user.isActive)
+      throw new ScanRejectedError(
+        "EMPLOYEE_INACTIVE",
+        "Acceso denegado: Empleado de baja.",
+      );
 
     const now = new Date();
-    const offsetMs = now.getTimezoneOffset() * 60000;
-    const localNow = new Date(now.getTime() - offsetMs);
-    const todayStr = localNow.toISOString().split("T")[0];
-    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+    const todayStr = todayLocalISO(now);
+    const currentMinutes = minutesSinceMidnight(now);
 
     // Validaciones de calendario
     const holiday = await this.calendarRepo.getHolidayByDate(todayStr);
     if (holiday)
-      throw new Error(`Bloqueado: Hoy es festivo (${holiday.name}).`);
+      throw new ScanRejectedError(
+        "HOLIDAY",
+        `Bloqueado: Hoy es festivo (${holiday.name}).`,
+        { holidayName: holiday.name },
+      );
 
     const userAbsence = await this.absenceRepo.getAbsenceForUserAndDate(
       user.id,
       todayStr,
     );
     if (userAbsence)
-      throw new Error(
+      throw new ScanRejectedError(
+        "ON_LEAVE",
         `Acceso denegado: Tienes un permiso (${userAbsence.type}).`,
+        { absenceType: userAbsence.type },
       );
 
     // Deducir entrada/salida
@@ -84,6 +112,29 @@ export class ProcessAttendanceScan {
     const finalType = isEntryFallback ? "ENTRY" : "EXIT";
     let isLate = false;
     let skippedBlocks = 0;
+    let anomaly: ScheduleAnomaly | undefined;
+
+    if (finalType === "EXIT") {
+      // Staff re-scan when they are unsure the first swipe registered. Closing
+      // the period would clock them out minutes after arriving, so a swipe
+      // inside the minimum window is treated as a duplicate, not a check-out.
+      const lastPeriod = myAttendance!.periods[periodIndex];
+      if (lastPeriod?.checkIn && !lastPeriod.isAbsent) {
+        const checkIn = new Date(lastPeriod.checkIn);
+        const elapsedMs = now.getTime() - checkIn.getTime();
+        if (elapsedMs < MIN_PERIOD_MINUTES * 60_000) {
+          throw new ScanRejectedError(
+            "DUPLICATE_SWIPE",
+            "Tu asistencia ya está registrada.",
+            {
+              employeeName: user.fullName,
+              lastCheckIn: formatClock(checkIn),
+              minutes: MIN_PERIOD_MINUTES,
+            },
+          );
+        }
+      }
+    }
 
     if (finalType === "ENTRY") {
       const assignment = await this.shiftRepo.getActiveAssignmentForUser(
@@ -91,83 +142,78 @@ export class ProcessAttendanceScan {
         todayStr,
       );
       const activeShiftId = assignment ? assignment.shiftId : user.shiftId;
+      const todayName = WEEK_DAYS[now.getDay()].id;
 
-      if (!activeShiftId) throw new Error("No tienes un turno asignado.");
+      // From here on, a scheduling problem no longer blocks the entry. The
+      // scan is recorded and flagged so the admin can follow it up, because
+      // the person is physically at work and cannot fix their own shift.
+      const shift = activeShiftId
+        ? await this.shiftRepo.getShiftById(activeShiftId)
+        : null;
 
-      const shift = await this.shiftRepo.getShiftById(activeShiftId);
-      if (!shift) throw new Error("El turno asignado no existe.");
-
-      // 🌟 LÓGICA DE DÍAS FLEXIBLES
-      const daysTranslation: Record<number, string> = {
-        0: "Domingo",
-        1: "Lunes",
-        2: "Martes",
-        3: "Miércoles",
-        4: "Jueves",
-        5: "Viernes",
-        6: "Sábado",
-      };
-      const todayName = daysTranslation[now.getDay()];
-
-      if (!shift.workDays.includes(todayName)) {
-        throw new Error(`Hoy (${todayName}) es tu día de descanso.`);
-      }
-
-      // 🌟 OBTENER BLOQUES DE HOY
-      const blocks = shift.blocksByDay ? shift.blocksByDay[todayName] : [];
-      if (!blocks || blocks.length === 0)
-        throw new Error(`No hay horarios configurados para el ${todayName}.`);
-
-      let targetBlockIndex = -1;
-      for (let i = 0; i < blocks.length; i++) {
-        const [endHour, endMin] = blocks[i].end.split(":").map(Number);
-        if (currentMinutes <= endHour * 60 + endMin) {
-          targetBlockIndex = i;
-          break;
-        }
-      }
-
-      if (targetBlockIndex !== -1) {
-        if (targetBlockIndex > periodIndex) {
-          skippedBlocks = targetBlockIndex - periodIndex;
-        } else if (targetBlockIndex < periodIndex) {
-          throw new Error("Desajuste de turnos. Contacta a administración.");
-        }
-
-        const [startHour, startMin] = blocks[targetBlockIndex].start
-          .split(":")
-          .map(Number);
-        if (
-          currentMinutes >
-          startHour * 60 + startMin + (shift.toleranceMinutes || 0)
-        ) {
-          isLate = true;
-        }
+      if (!activeShiftId) {
+        anomaly = { code: "NO_SHIFT_ASSIGNED" };
+      } else if (!shift) {
+        anomaly = { code: "SHIFT_NOT_FOUND" };
+      } else if (!shift.workDays.includes(todayName)) {
+        anomaly = { code: "REST_DAY", detail: todayName };
       } else {
-        const lastBlock = blocks[blocks.length - 1];
-        throw new Error(`Tu turno finalizó a las ${lastBlock.end}.`);
+        const blocks = shift.blocksByDay ? shift.blocksByDay[todayName] : [];
+        if (!blocks || blocks.length === 0) {
+          anomaly = { code: "NO_BLOCKS_CONFIGURED", detail: todayName };
+        } else {
+          let targetBlockIndex = -1;
+          for (let i = 0; i < blocks.length; i++) {
+            if (currentMinutes <= parseTimeToMinutes(blocks[i].end)) {
+              targetBlockIndex = i;
+              break;
+            }
+          }
+
+          if (targetBlockIndex === -1) {
+            const lastBlock = blocks[blocks.length - 1];
+            throw new ScanRejectedError(
+              "SHIFT_ENDED",
+              `Tu turno finalizó a las ${lastBlock.end}.`,
+              { endedAt: lastBlock.end },
+            );
+          }
+
+          if (targetBlockIndex > periodIndex) {
+            skippedBlocks = targetBlockIndex - periodIndex;
+          } else if (targetBlockIndex < periodIndex) {
+            throw new ScanRejectedError(
+              "BLOCK_MISMATCH",
+              "Desajuste de turnos. Contacta a administración.",
+            );
+          }
+
+          const startMinutes = parseTimeToMinutes(blocks[targetBlockIndex].start);
+          if (currentMinutes > startMinutes + (shift.toleranceMinutes || 0)) {
+            isLate = true;
+          }
+        }
       }
     }
 
-    await this.attendanceRepo.recordScan(
-      user.id,
-      user.employeeNumber || "0000",
-      todayStr,
-      finalType,
-      now,
+    await this.attendanceRepo.recordScan({
+      userId: user.id,
+      employeeNumber: user.employeeNumber || "0000",
+      date: todayStr,
+      type: finalType,
+      time: now,
       isLate,
       skippedBlocks,
-    );
+      anomaly,
+    });
 
     return {
       employeeName: user.fullName,
-      time: now.toLocaleTimeString("es-MX", {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      time: formatClock(now),
       isLate,
       type: finalType,
       skippedBlocks,
+      anomaly,
     };
   }
 }

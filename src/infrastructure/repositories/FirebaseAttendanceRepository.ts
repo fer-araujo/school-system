@@ -12,9 +12,14 @@ import {
 import type {
   AttendanceStatus,
   AttendanceWithWorker,
+  ScheduleAnomaly,
   WorkPeriod,
 } from "../../domain/models/User";
-import type { AttendanceRepository } from "../../domain/repositories/AttendanceRepository";
+import type {
+  AttendanceRepository,
+  RecordScanInput,
+} from "../../domain/repositories/AttendanceRepository";
+import { ScanRejectedError } from "../../domain/errors/ScanRejectedError";
 
 // Definición estricta para el manejo de datos crudos de Firebase
 interface FirestoreWorkPeriod {
@@ -22,18 +27,41 @@ interface FirestoreWorkPeriod {
   checkOut?: Date | Timestamp | null;
   isLate?: boolean;
   isAbsent?: boolean;
+  anomaly?: ScheduleAnomaly;
+}
+
+/**
+ * The single read mapper. There used to be three copies of this and all of
+ * them dropped `isAbsent`, so every consumer counting absent periods silently
+ * got zero.
+ */
+function toWorkPeriod(p: FirestoreWorkPeriod): WorkPeriod {
+  return {
+    checkIn:
+      p.checkIn instanceof Timestamp ? p.checkIn.toDate() : (p.checkIn as Date),
+    checkOut:
+      p.checkOut instanceof Timestamp
+        ? p.checkOut.toDate()
+        : p.checkOut
+          ? (p.checkOut as Date)
+          : undefined,
+    isLate: p.isLate ?? false,
+    isAbsent: p.isAbsent ?? false,
+    anomaly: p.anomaly,
+  };
 }
 
 export class FirebaseAttendanceRepository implements AttendanceRepository {
-  async recordScan(
-    userId: string,
-    employeeNumber: string,
-    date: string,
-    type: "ENTRY" | "EXIT",
-    time: Date,
-    isLate: boolean = false,
-    skippedBlocks: number = 0,
-  ): Promise<void> {
+  async recordScan({
+    userId,
+    employeeNumber,
+    date,
+    type,
+    time,
+    isLate = false,
+    skippedBlocks = 0,
+    anomaly,
+  }: RecordScanInput): Promise<void> {
     const docId = `${userId}_${date}`;
     const docRef = doc(db, "attendance", docId);
 
@@ -57,7 +85,8 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
         const lastPeriod = periods[periods.length - 1];
         // Modificamos la validación para ignorar los bloques que son faltas
         if (lastPeriod && !lastPeriod.checkOut && !lastPeriod.isAbsent) {
-          throw new Error(
+          throw new ScanRejectedError(
+            "DOUBLE_ENTRY",
             "Doble entrada denegada: Ya registraste una entrada y no has marcado salida.",
           );
         }
@@ -72,19 +101,25 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
         }
 
         // Después de rellenar las faltas, ahora sí guardamos su entrada real
-        periods.push({ checkIn: time, isLate });
+        // The spread is conditional because Firestore rejects an explicit
+        // `undefined` unless ignoreUndefinedProperties is on, and it is not.
+        periods.push({ checkIn: time, isLate, ...(anomaly ? { anomaly } : {}) });
         status = "PRESENT";
       }
 
       if (type === "EXIT") {
         if (periods.length === 0) {
-          throw new Error(
+          throw new ScanRejectedError(
+            "EXIT_WITHOUT_ENTRY",
             "Salida denegada: No tienes ninguna entrada registrada hoy.",
           );
         }
         const lastPeriodIndex = periods.length - 1;
         if (periods[lastPeriodIndex].checkOut) {
-          throw new Error("Doble salida denegada: Ya cerraste tu último turno.");
+          throw new ScanRejectedError(
+            "DOUBLE_EXIT",
+            "Doble salida denegada: Ya cerraste tu último turno.",
+          );
         }
         periods[lastPeriodIndex].checkOut = time;
         status = "COMPLETED";
@@ -118,19 +153,7 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
       const rawPeriods = (data.periods as FirestoreWorkPeriod[]) || [];
 
       // Mapeo seguro y estricto asegurando que devolvemos Date nativo de JS
-      const mappedPeriods: WorkPeriod[] = rawPeriods.map((p) => ({
-        checkIn:
-          p.checkIn instanceof Timestamp
-            ? p.checkIn.toDate()
-            : (p.checkIn as Date),
-        checkOut:
-          p.checkOut instanceof Timestamp
-            ? p.checkOut.toDate()
-            : p.checkOut
-              ? (p.checkOut as Date)
-              : undefined,
-        isLate: p.isLate || false,
-      }));
+      const mappedPeriods: WorkPeriod[] = rawPeriods.map(toWorkPeriod);
 
       return {
         id: doc.id,
@@ -161,19 +184,7 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
     return snapshot.docs.map((doc) => {
       const data = doc.data();
       const rawPeriods = (data.periods as FirestoreWorkPeriod[]) || [];
-      const mappedPeriods: WorkPeriod[] = rawPeriods.map((p) => ({
-        checkIn:
-          p.checkIn instanceof Timestamp
-            ? p.checkIn.toDate()
-            : (p.checkIn as Date),
-        checkOut:
-          p.checkOut instanceof Timestamp
-            ? p.checkOut.toDate()
-            : p.checkOut
-              ? (p.checkOut as Date)
-              : undefined,
-        isLate: p.isLate || false,
-      }));
+      const mappedPeriods: WorkPeriod[] = rawPeriods.map(toWorkPeriod);
 
       return {
         id: doc.id,
@@ -219,19 +230,7 @@ export class FirebaseAttendanceRepository implements AttendanceRepository {
         const data = doc.data();
         const rawPeriods = (data.periods as FirestoreWorkPeriod[]) || [];
 
-        const mappedPeriods: WorkPeriod[] = rawPeriods.map((p) => ({
-          checkIn:
-            p.checkIn instanceof Timestamp
-              ? p.checkIn.toDate()
-              : (p.checkIn as Date),
-          checkOut:
-            p.checkOut instanceof Timestamp
-              ? p.checkOut.toDate()
-              : p.checkOut
-                ? (p.checkOut as Date)
-                : undefined,
-          isLate: p.isLate || false,
-        }));
+        const mappedPeriods: WorkPeriod[] = rawPeriods.map(toWorkPeriod);
 
         return {
           id: doc.id,
