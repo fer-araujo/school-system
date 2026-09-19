@@ -14,6 +14,8 @@ export interface DashboardTableRecord extends AttendanceWithWorker {
   shiftName?: string;
   isJustified?: boolean;
   absenceReason?: string;
+  /** Free-text justification captured with the leave, e.g. "receta médica". */
+  absenceNotes?: string;
 }
 
 export class GetDashboardStats {
@@ -172,6 +174,7 @@ export class GetDashboardStats {
               shiftName: currentShiftName, // 🌟 INYECTAMOS EL TURNO
               isJustified: true,
               absenceReason: absenceDetail.type || "Permiso",
+              absenceNotes: absenceDetail.notes || undefined,
             });
             continue;
           }

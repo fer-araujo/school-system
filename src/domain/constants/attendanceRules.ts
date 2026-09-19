@@ -11,3 +11,9 @@
  * still apply when there is no shift at all.
  */
 export const MIN_PERIOD_MINUTES = 10;
+
+/**
+ * Cap for an admin observation on a day. Long enough for the context a
+ * follow-up needs, short enough that the history card stays readable.
+ */
+export const MAX_NOTE_LENGTH = 500;

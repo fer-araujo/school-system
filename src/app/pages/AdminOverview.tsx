@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import {
   Users,
   UserCheck,
@@ -36,6 +36,11 @@ import { exportAdminOverviewToCSV } from "../../utils/CSVfunctions";
 import ShiftFilterPills from "../components/ui/ShiftFilterPills";
 import EmployeeDetailModal from "../components/admin/EmployeeDetailModal";
 import StatCard from "../components/ui/StatCard";
+import { FirebaseAttendanceNoteRepository } from "../../infrastructure/repositories/FirebaseAttendanceNoteRepository";
+import { ManageAttendanceNotes } from "../../application/use-cases/ManageAttendanceNotes";
+import type { AttendanceNote } from "../../domain/models/AttendanceNote";
+import { useAuth } from "../context/AuthContext";
+import toast from "react-hot-toast";
 
 const employeeRepo = new FirebaseEmployeeRepository();
 const attendanceRepo = new FirebaseAttendanceRepository();
@@ -50,6 +55,8 @@ const getDashboardStatsUseCase = new GetDashboardStats(
   shiftRepo,
   calendarRepo,
 );
+const noteRepo = new FirebaseAttendanceNoteRepository();
+const manageNotesUseCase = new ManageAttendanceNotes(noteRepo);
 
 /** Short labels for the amber marker on an out-of-schedule check-in. */
 const ANOMALY_LABELS: Record<string, string> = {
@@ -130,6 +137,13 @@ export default function AdminOverview() {
   const [isCalculating, setIsCalculating] = useState(true);
 
   // Estados Modal
+  const { user } = useAuth();
+  const [notesByDate, setNotesByDate] = useState<Record<string, AttendanceNote>>(
+    {},
+  );
+  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
+  const openDetailForRef = useRef<string | null>(null);
+
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedEmployeeDetail, setSelectedEmployeeDetail] =
     useState<GroupedEmployeeRecord | null>(null);
@@ -254,9 +268,62 @@ export default function AdminOverview() {
     return result.sort((a, b) => a.workerName.localeCompare(b.workerName));
   }, [tableData, selectedShift, statFilter]);
 
-  const handleOpenDetail = (emp: GroupedEmployeeRecord) => {
+  // Memoised because the columns useMemo closes over it and it now depends on
+  // the selected range.
+  const handleOpenDetail = useCallback(async (emp: GroupedEmployeeRecord) => {
     setSelectedEmployeeDetail(emp);
     setIsDetailModalOpen(true);
+    setNotesByDate({});
+    setIsLoadingNotes(true);
+    // Opening a second employee before the first load returns would otherwise
+    // paint one person's notes onto another's history.
+    openDetailForRef.current = emp.userId;
+
+    try {
+      const notes = await manageNotesUseCase.getForRange(
+        emp.userId,
+        dateRange.start,
+        dateRange.end,
+      );
+      if (openDetailForRef.current !== emp.userId) return;
+      setNotesByDate(Object.fromEntries(notes.map((n) => [n.date, n])));
+    } catch (error) {
+      console.error("Error cargando observaciones", error);
+      if (openDetailForRef.current === emp.userId) {
+        toast.error("No se pudieron cargar las observaciones.");
+      }
+    } finally {
+      if (openDetailForRef.current === emp.userId) setIsLoadingNotes(false);
+    }
+  }, [dateRange]);
+
+  const handleSaveNote = async (userId: string, date: string, text: string) => {
+    await manageNotesUseCase.save({
+      userId,
+      date,
+      text,
+      authorName: user?.fullName,
+    });
+
+    const trimmed = text.trim();
+    setNotesByDate((current) => {
+      const next = { ...current };
+      if (!trimmed) {
+        delete next[date];
+        return next;
+      }
+      next[date] = {
+        id: `${userId}_${date}`,
+        userId,
+        date,
+        text: trimmed,
+        authorName: user?.fullName,
+        updatedAt: new Date(),
+      };
+      return next;
+    });
+
+    toast.success(trimmed ? "Observación guardada." : "Observación eliminada.");
   };
 
   const columns = useMemo(() => {
@@ -486,7 +553,7 @@ export default function AdminOverview() {
       permisosCol,
       isSingleDay ? null : accionesCol,
     ].filter((c): c is ColumnDef<GroupedEmployeeRecord> => c !== null);
-  }, [isSingleDay, dateRange]);
+  }, [isSingleDay, dateRange, handleOpenDetail]);
 
   const isFullyLoading = isFetchingNetwork || isCalculating;
 
@@ -629,6 +696,9 @@ export default function AdminOverview() {
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         employee={selectedEmployeeDetail}
+        notesByDate={notesByDate}
+        isLoadingNotes={isLoadingNotes}
+        onSaveNote={handleSaveNote}
       />
     </div>
   );

@@ -210,6 +210,28 @@ describe("absences and permissions", () => {
     expect(row.status).toBe("ABSENT");
   });
 
+  it("carries the leave notes onto the row", async () => {
+    // The admin history shows these; they were captured in AbsenceForm and
+    // previously dropped on the way to the table.
+    const { useCase } = setup({
+      absences: [anAbsence({ notes: "Justificado con receta médica" })],
+    });
+
+    const stats = await useCase.execute(range(MONDAY), []);
+
+    expect(stats.fullTableData[0].absenceNotes).toBe(
+      "Justificado con receta médica",
+    );
+  });
+
+  it("leaves absenceNotes undefined when the leave has none", async () => {
+    const { useCase } = setup({ absences: [anAbsence({ notes: "" })] });
+
+    const stats = await useCase.execute(range(MONDAY), []);
+
+    expect(stats.fullTableData[0].absenceNotes).toBeUndefined();
+  });
+
   it("still counts the shift as expected when the absence is justified", async () => {
     const { useCase } = setup({ absences: [anAbsence()] });
     const stats = await useCase.execute(range(MONDAY), []);
