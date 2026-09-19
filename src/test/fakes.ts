@@ -3,7 +3,9 @@ import type { Absence } from "../domain/models/Absence";
 import type { Holiday } from "../domain/models/Holiday";
 import type { Shift, ShiftAssignment } from "../domain/models/Shift";
 import type { AttendanceWithWorker, User } from "../domain/models/User";
+import type { AttendanceNote } from "../domain/models/AttendanceNote";
 import type { AbsenceRepository } from "../domain/repositories/AbsenceRepository";
+import type { AttendanceNoteRepository } from "../domain/repositories/AttendanceNoteRepository";
 import type { AttendanceRepository } from "../domain/repositories/AttendanceRepository";
 import type { CalendarRepository } from "../domain/repositories/CalendarRepository";
 import type { EmployeeRepository } from "../domain/repositories/EmployeeRepository";
@@ -103,6 +105,26 @@ export function makeFakeCalendarRepository(holidays: Holiday[] = []) {
   };
 
   return { repo };
+}
+
+export function makeFakeAttendanceNoteRepository(notes: AttendanceNote[] = []) {
+  const saveNote =
+    vi.fn<AttendanceNoteRepository["saveNote"]>(async () => {});
+  const deleteNote =
+    vi.fn<AttendanceNoteRepository["deleteNote"]>(async () => {});
+
+  const repo: AttendanceNoteRepository = {
+    getNotesForUserRange: vi.fn(
+      async (userId: string, start: string, end: string) =>
+        notes.filter(
+          (n) => n.userId === userId && n.date >= start && n.date <= end,
+        ),
+    ),
+    saveNote,
+    deleteNote,
+  };
+
+  return { repo, saveNote, deleteNote };
 }
 
 export function makeFakeAbsenceRepository(absences: Absence[] = []) {

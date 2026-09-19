@@ -53,6 +53,12 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Admin observations on a day. Deliberately admin-only: these are notes
+    // about staff, not data the terminal or the employee needs.
+    match /attendance_notes/{noteId} {
+      allow read, write: if isAdmin();
+    }
+
     match /shifts/{shiftId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
